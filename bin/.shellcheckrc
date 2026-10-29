@@ -1,0 +1,2 @@
+# Let shellcheck follow wf-lib.sh, which every wf- script sources, without -x.
+external-sources=true
