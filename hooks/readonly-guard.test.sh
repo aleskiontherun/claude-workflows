@@ -188,14 +188,16 @@ expect allow $R 'ls -la /work/acme-api/src'
 expect allow $R 'ls "a b"'
 expect allow $R 'find /work/acme-api -maxdepth 3 -iname "decisions*" -not -path "*/node_modules/*" 2>/dev/null'
 expect allow $R 'git -C /work/acme-api show origin/main:README.md | tr "\n" " " | grep -oE "open at [^.]+"'
-expect allow $R 'cd /work/acme-api && git log --oneline -5 && git status --porcelain'
+expect deny  $R 'cd /work/acme-api && git log --oneline -5 && git status --porcelain'   # cd only on its own
+expect allow $R 'git -C /work/acme-api log --oneline -5 && git -C /work/acme-api status --porcelain'
 expect allow $R 'ls -a /work/acme-api | grep -i -E "^(agents|claude|contributing|decisions|readme)\.md$"'
 expect allow $R 'git -C /work/acme-api grep -n foo origin/main -- src/ || true'
 expect allow $R 'cat /work/acme-api/CONTRIBUTING.md | head -50; wc -l /work/acme-api/README.md'
 expect allow $R 'git -C /work/acme-api diff origin/main...HEAD -- src/ 2>/dev/null | head -200'
 expect allow $R 'GIT_PAGER=cat git -C /work/acme-api log -1'
 expect allow $R 'LC_ALL=C sort /work/acme-api/words.txt | uniq -c'
-expect allow $R '(cd /work/acme-api && git log -1)'
+expect deny  $R '(cd /work/acme-api && git log -1)'
+expect allow $R '(git -C /work/acme-api log -1)'
 expect allow $R 'jq -r ".version" /work/acme-api/package.json'
 expect allow $R 'grep -rn "->" /work/acme-api/src'
 expect allow $R "git -C /work/acme-api log --format='%h -> %s' -5"
@@ -404,11 +406,11 @@ expect deny  $R 'printf -vPATH %s tools:/usr/bin; git status'
 expect allow $R "printf '%s\n' x"
 expect allow $R 'printf -- -v'
 
-# A bare repository committed in the diff carries a config git would obey. The shell's
-# directory is tracked from the hook's cwd through each cd; neither cd nor -C may reach a
-# bare repository, and --git-dir, --work-tree and --bare name one outright.
+# A bare repository committed in the diff carries a config git would obey. Neither -C nor cd
+# may reach one, and --git-dir, --work-tree and --bare name one outright. cd is allowed only
+# as the whole command: whether a cd takes effect depends on grammar the guard does not read.
 GUARD_TMP=$(mktemp -d)
-mkdir -p "$GUARD_TMP/repo/.git" "$GUARD_TMP/repo/fixtures/x.git/objects" "$GUARD_TMP/repo/fixtures/x.git/refs" "$GUARD_TMP/repo/fixtures/x.git/sub"
+mkdir -p "$GUARD_TMP/repo/.git" "$GUARD_TMP/repo/fixtures/x.git/objects" "$GUARD_TMP/repo/fixtures/x.git/refs" "$GUARD_TMP/repo/fixtures/x.git/sub" "$GUARD_TMP/repo/a/x.git"
 : > "$GUARD_TMP/repo/fixtures/x.git/HEAD"
 X=$GUARD_TMP/repo/fixtures/x.git
 expect deny  $R "git -C $X diff HEAD~1 HEAD"
@@ -421,16 +423,23 @@ expect deny  $R "git --git-dir=$X --work-tree=. status"
 expect deny  $R "git --git-dir $X status"
 expect deny  $R "git --work-tree=. status"
 expect deny  $R "git --bare -C $X log"
-expect deny  $R "cd $X && git log"
-expect deny  $R "cd $X"                                     # the cd alone: the next call would start there
-expect deny  $R "cd $X/sub; git log"
-expect allow $R "cd $GUARD_TMP/repo && git log"
-expect allow $R "cd $GUARD_TMP/repo && cd fixtures && cd .. && git -C fixtures log"
-expect deny  $R 'cd - && git log'
+expect deny  $R "cd $X"                                     # the next call would start there
+expect deny  $R "cd $X/sub"
+expect allow $R "cd $GUARD_TMP/repo"
+expect allow $R "cd -- $GUARD_TMP/repo"
+expect allow $R "cd -P $GUARD_TMP/repo"
+expect deny  $R "cd $GUARD_TMP/repo && git log"             # cd only on its own
+expect deny  $R "cd $GUARD_TMP/repo; cd fixtures"
+expect deny  $R "cd $GUARD_TMP/repo | true"
+expect deny  $R "false && cd $GUARD_TMP/repo"
+expect allow $R "cd $GUARD_TMP/repo &"                      # one command that moves nothing: harmless
+expect allow $R "(cd $GUARD_TMP/repo)"
+expect deny  $R 'cd -'
 expect deny  $R "cd $GUARD_TMP/repo $X"
-expect allow $R 'cd && pwd'
-expect allow $R 'cd ~ && pwd'
-expect deny  $R 'cd ~root && git log'
+expect allow $R 'cd'
+expect allow $R 'cd ~'
+expect deny  $R 'cd ~root'
+expect allow $R 'cd /nowhere'                               # absolute and missing: cd fails on its own
 # A relative path is read against the hook input's cwd, and against the guard's own when
 # the input has none.
 cwd_decision() { # cwd command -> allow | deny
@@ -443,16 +452,18 @@ expect_cwd() { # allow|deny cwd command
   if [ "$got" = "$1" ]; then ok "$1  [cwd] $3"; else bad "$1  [cwd] $3" "got: $got"; fi
 }
 expect_cwd deny  "$GUARD_TMP/repo" 'git -C fixtures/x.git log'
-expect_cwd deny  "$GUARD_TMP/repo" 'cd fixtures/x.git && git log'
-expect_cwd deny  "$GUARD_TMP/repo" 'cd fixtures && git -C x.git log'
-expect_cwd deny  "$GUARD_TMP/repo" 'cd fixtures/x.git || true; git log'
-expect_cwd allow "$GUARD_TMP/repo" 'cd fixtures && git log'
-expect_cwd allow "$GUARD_TMP/repo" 'cd -- fixtures && git log'
-expect_cwd allow "$GUARD_TMP/repo" 'cd -P fixtures && git log'
 expect_cwd allow "$GUARD_TMP/repo" 'git -C fixtures log'
 expect_cwd deny  "$GUARD_TMP/repo" 'git -C nowhere log'      # relative and missing: the shell may be elsewhere
-expect_cwd deny  "$GUARD_TMP/repo" 'cd nowhere; git log'
-expect_cwd allow "$GUARD_TMP/repo" 'cd /nowhere; git log'    # absolute and missing: cd fails, git runs here
+expect_cwd deny  "$GUARD_TMP/repo" 'cd fixtures/x.git'
+expect_cwd allow "$GUARD_TMP/repo" 'cd fixtures'
+expect_cwd deny  "$GUARD_TMP/repo" 'cd nowhere'
+expect_cwd deny  "$GUARD_TMP/repo" 'cd fixtures && git log'
+expect_cwd deny  "$GUARD_TMP/repo" 'cd fixtures && git -C x.git log'
+# A cd that did not take effect must not move the guard: a/x.git is a plain directory.
+expect_cwd deny  "$GUARD_TMP/repo" 'false && cd a; cd fixtures/x.git; git log'
+expect_cwd deny  "$GUARD_TMP/repo" 'cd a | true; cd fixtures/x.git; git log'
+expect_cwd deny  "$GUARD_TMP/repo" '(cd a); cd fixtures/x.git; git log'
+expect_cwd deny  "$GUARD_TMP/repo" 'cd a & cd fixtures/x.git; git log'
 expect_cwd deny  "$X" 'git log'                              # no -C at all
 expect_cwd deny  "$X/sub" 'git status'
 got=$(cd "$GUARD_TMP/repo" && decision $R 'git -C fixtures/x.git log')

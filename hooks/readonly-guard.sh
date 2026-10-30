@@ -54,11 +54,12 @@
 #          -- would reach a checkout's `.git` before a bare repository: a repository under
 #          review can commit a bare one, with a `config` whose diff.external or
 #          core.fsmonitor is a program
-#   cd     to one named directory that exists, and not into a bare repository, for the same
-#          reason; the shell's directory is tracked from the hook input's `cwd` through each
-#          `cd` and resolves every relative path after it. Never `cd -` or `cd ~user`. A
-#          relative path to a directory that does not exist is denied, since the hook's
-#          `cwd` is the only anchor the guard has for where the shell is
+#   cd     only as the whole command, to one named directory that exists and is not in a
+#          bare repository, for the same reason; a command after a `cd` in the same call
+#          would be checked from a directory the shell may not be in. Never `cd -` or
+#          `cd ~user`. A relative path to a directory that does not exist is denied, for
+#          `cd` and `-C` alike, since the hook's `cwd` is the only anchor the guard has for
+#          where the shell is
 #   gh     pr list|view|checks|diff|status; issue list|view; repo view; run list|view;
 #          release list|view; auth status; api with no method other than GET and no body.
 #          Never -w / --web, which opens a browser
@@ -333,12 +334,15 @@ LOG_LONGVALS='max-count skip since after until before author committer grep grep
   min-parents max-parents glob exclude format encoding date
   decorate-refs decorate-refs-exclude filter missing max-age min-age default'
 
-# The shell's directory is tracked: the hook input's `cwd` to start with, moved by each `cd`
-# the command runs, and git's by each -C. A relative path to a directory that does not
-# exist is denied rather than left to fail, because the hook's `cwd` is the guard's only
-# anchor for the shell's directory, and a path that resolves nowhere from it may resolve
-# somewhere from where the shell really is. An absolute one that does not exist is left to
-# the shell or git to fail on, and moves nothing.
+# The shell's directory is the hook input's `cwd`, and git's is that moved by each -C. A
+# `cd` is allowed only as the whole command, so that nothing in the same call runs after it:
+# whether a `cd` takes effect depends on grammar the guard does not read (a subshell, a
+# pipeline, `&`, a failed `&&`), and a command after one would be checked from a directory
+# the shell may not be in. A relative path to a directory that does not exist is denied
+# rather than left to fail, because the hook's `cwd` is the guard's only anchor for the
+# shell's directory, and a path that resolves nowhere from it may resolve somewhere from
+# where the shell really is. An absolute one that does not exist is left to the shell or
+# git to fail on.
 resolve_dir() { # dir base -> the canonical directory on stdout; 1 if it is not a directory
   local d=$1
   case $d in /*) ;; *) d=$2/$d ;; esac
@@ -359,6 +363,7 @@ reaches_bare_repo() { # canonical dir -> 0 if git's discovery from it meets a ba
 check_cd() { # words after `cd`
   local -a w=("$@")
   local i=0 target new
+  [ "$NSEG" -eq 1 ] || deny "\`cd\` only as the whole command; for the rest, use \`git -C\` or a path"
   while [ $i -lt ${#w[@]} ]; do
     case ${w[$i]} in
       --) i=$((i + 1)); break ;;
@@ -378,7 +383,6 @@ check_cd() { # words after `cd`
   esac
   if new=$(resolve_dir "$target" "$hook_cwd"); then
     ! reaches_bare_repo "$new" || deny "\`cd $target\` enters a bare repository, whose config git would obey; stay in a checkout"
-    hook_cwd=$new
   else
     case $target in /*) ;; *) deny "\`cd $target\`: no such directory under $hook_cwd; name it from the root" ;; esac
   fi
@@ -628,8 +632,12 @@ check_segment() { # the words of one simple command, unquoted
   return 0
 }
 
+# Read every line first: `cd` needs to know whether it is the whole command.
+lines=()
+while IFS= read -r line; do lines+=("$line"); done < <(read_commands)
+NSEG=$(( ${#lines[@]} > 0 ? ${#lines[@]} - 1 : 0 ))
 first=true
-while IFS= read -r line; do
+for line in "${lines[@]+"${lines[@]}"}"; do
   if $first; then
     first=false
     case $line in
@@ -648,7 +656,7 @@ while IFS= read -r line; do
   [ "$line" = $'\x1d' ] && deny "parentheses other than a subshell around a whole command are not allowed (a function definition?)"
   IFS=$'\x1f' read -r -a words <<< "$line"
   check_segment "${words[@]+"${words[@]}"}"   # guarded: bash 3.2 calls an empty array unbound
-done < <(read_commands)
+done
 
 # The checker always prints a status line for a non-empty command, so silence means it did
 # not run -- perl missing, or a crash -- and a read-only agent's command must not pass unread.
