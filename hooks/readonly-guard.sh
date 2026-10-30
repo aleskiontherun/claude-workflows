@@ -34,14 +34,9 @@
 #          or --config-env
 #   gh     pr list|view|checks|diff|status; issue list|view; repo view; run list|view;
 #          release list|view; auth status; api with no method other than GET and no body
-#   curl   with no method other than GET or HEAD, no body, no output, config, trace,
-#          cookie, HSTS or Alt-Svc file, no %output{} in --write-out and no @file
-#          argument (-o /dev/null is fine)
 #   find   without -delete, -exec, -execdir, -ok, -okdir, -fls or -fprint*
-#   sed    with -n, -E, -r and -e only, and a program made of addresses plus p d q = l n N D
-#          P h H g G x, s/// without the w or e flags, y///, and braces -- so no w, r, e, -i
-#          or -f
-#   awk    with no >, |, system(), @load, @include or program file in its arguments
+#   never  sed, awk, curl or wget: each hides write or exec modes in its program or format
+#          text, and the agents have Read, Grep and WebFetch for what those did
 #   and every command named bare or under /usr/bin, /bin, /usr/local/bin or
 #          /opt/homebrew/bin: `./tools/git` or `node_modules/.bin/cat` is denied, since a
 #          repository under review can ship a binary by any name
@@ -52,8 +47,8 @@
 #          stat du cd
 #
 # Short options are read as clusters: the run of letters after a lone dash is checked for a
-# forbidden letter, so `-sSo file` is `-o` and `-fbody=x` is `-f`. The price is that a
-# harmless attached value which happens to contain such a letter is denied too.
+# forbidden letter, so `git branch -rd` is `-d` and `gh api -fbody=x` is `-f`. The price is
+# that a harmless attached value which happens to contain such a letter is denied too.
 #
 # What it cannot see: a command the repository's own git configuration runs (a textconv
 # filter, core.fsmonitor set in .git/config) -- that is the human's checkout, not the
@@ -148,8 +143,8 @@ has_flag() { # pattern words... -> 0 when a word matches the glob pattern
 
 # Short options cluster (`-sSo`) and take attached values (`-XPOST`, `-fbody=x`), so a flag
 # is never just a word. cluster_has looks at the run of letters after a lone dash and says
-# whether any of the given letters is in it; a caller that allows one attached form (`-XGET`,
-# `-o/dev/null`) checks that word first and skips it.
+# whether any of the given letters is in it; a caller that allows one attached form (`-XGET`)
+# checks that word first and skips it.
 cluster_has() { # letters words... -> 0 when a short-option word carries one of the letters
   local letters=$1 w run; shift
   for w in "$@"; do
@@ -310,77 +305,6 @@ check_gh() { # words after `gh`
   deny "\`gh $sub $act\` is not on the read-only allowlist"
 }
 
-check_curl() { # words after `curl`
-  local -a w=("$@") others=()
-  local i=0
-  while [ $i -lt ${#w[@]} ]; do
-    case ${w[$i]} in
-      -X|--request)
-        case ${w[$((i + 1))]:-} in GET|HEAD|get|head) ;; *) deny "\`curl\` with a method other than GET or HEAD" ;; esac
-        i=$((i + 2)); continue ;;
-      -XGET|-XHEAD|-Xget|-Xhead|--request=GET|--request=HEAD|--request=get|--request=head) ;;
-      --request=*) deny "\`curl\` with a method other than GET or HEAD" ;;
-      --data|--data-*|--form|--form-string|--upload-file|--json|--data=*|--form=*|--json=*)
-        deny "\`curl\` with a request body" ;;
-      -o|--output)
-        [ "${w[$((i + 1))]:-}" = /dev/null ] || deny "\`curl\` writing to a file; only -o /dev/null is allowed"
-        i=$((i + 2)); continue ;;
-      -o/dev/null|--output=/dev/null) ;;
-      --output=*) deny "\`curl\` writing to a file; only -o /dev/null is allowed" ;;
-      --remote-name|--remote-name-all|--remote-header-name|--create-dirs|--output-dir|--output-dir=*|--cookie-jar|--cookie-jar=*|--dump-header|--dump-header=*|--trace|--trace-ascii|--trace-ascii=*|--trace=*|--etag-save|--etag-save=*|--libcurl|--libcurl=*|--stderr|--stderr=*|--hsts|--hsts=*|--alt-svc|--alt-svc=*)
-        deny "\`curl ${w[$i]%%=*}\` writes a file" ;;
-      --config|--config=*)
-        deny "\`curl --config\` reads options from a file the guard cannot see" ;;
-      *) others+=("${w[$i]}") ;;
-    esac
-    i=$((i + 1))
-  done
-  # --write-out can write a file through %output{...}, or read its format from a file.
-  local a
-  for a in "${w[@]+"${w[@]}"}"; do
-    case $a in
-      *'%output{'*) deny "\`curl --write-out\` with %output{} writes a file" ;;
-      @*|*=@*|-[A-Za-z]*@*) deny "\`curl\` reading an argument from a file the guard cannot see" ;;
-    esac
-  done
-  # The short forms, clustered or attached, once the allowed exact words above are out.
-  cluster_has X "${others[@]+"${others[@]}"}" && deny "\`curl\` with a method other than GET or HEAD"
-  cluster_has dFT "${others[@]+"${others[@]}"}" && deny "\`curl\` with a request body"
-  cluster_has oOJcD "${others[@]+"${others[@]}"}" && deny "\`curl\` writing to a file; only -o /dev/null is allowed"
-  cluster_has K "${others[@]+"${others[@]}"}" && deny "\`curl -K\` reads options from a file the guard cannot see"
-  return 0
-}
-
-check_sed() { # words after `sed`
-  local -a w=("$@")
-  local i=0 seen_e=false
-  local -a progs=()
-  while [ $i -lt ${#w[@]} ]; do
-    case ${w[$i]} in
-      -e|--expression) progs+=("${w[$((i + 1))]:-}"); seen_e=true; i=$((i + 2)); continue ;;
-      --expression=*) progs+=("${w[$i]#--expression=}"); seen_e=true ;;
-      -n|-E|-r|--quiet|--silent|--regexp-extended|--posix|-s|--separate) ;;
-      -[nErs]*) [[ ${w[$i]} =~ ^-[nErs]+$ ]] || deny "\`sed ${w[$i]}\` is not an allowed option" ;;
-      --) ;;
-      -*) deny "\`sed ${w[$i]}\` is not an allowed option" ;;
-      *) if ! $seen_e && [ ${#progs[@]} -eq 0 ]; then progs+=("${w[$i]}"); fi ;;
-    esac
-    i=$((i + 1))
-  done
-  local p
-  for p in "${progs[@]+"${progs[@]}"}"; do
-    P=$p perl -e '
-      for my $c (split /[;\n{}]/, $ENV{P}) {
-        next if $c =~ /^\s*$/;
-        my $addr = qr{(?:\d+|\$|/(?:[^/\\]|\\.)*/)};
-        # An address alone is what precedes a `{` block, which the split removed.
-        next if $c =~ m{^\s*(?:$addr(?:,(?:$addr|\+\d+|~\d+))?)?\s*!?\s*(?:[pdlnNDPhHgGx=]|q\d*|s(.)(?:(?!\1)[^\\]|\\.)*\1(?:(?!\1)[^\\]|\\.)*\1[gpI0-9]*|y(.)(?:(?!\2)[^\\]|\\.)*\2(?:(?!\2)[^\\]|\\.)*\2)?\s*$};
-        exit 1;
-      }
-      exit 0' || deny "the sed program \`$p\` is not in the read-only subset (addresses with p d q = l n N D P h H g G x, s/// without w or e, y///)"
-  done
-}
-
 check_segment() { # the words of one simple command, unquoted
   local -a words=("$@")
   # Leading NAME=value assignments and the harmless wrappers.
@@ -404,26 +328,14 @@ check_segment() { # the words of one simple command, unquoted
   case $prog in
     git) check_git "${rest[@]+"${rest[@]}"}" ;;
     gh) check_gh "${rest[@]+"${rest[@]}"}" ;;
-    curl) check_curl "${rest[@]+"${rest[@]}"}" ;;
-    sed) check_sed "${rest[@]+"${rest[@]}"}" ;;
+    sed|awk|gawk|mawk|nawk|curl|wget)
+      deny "\`$prog\` is not allowed for a read-only agent; read files with the Read and Grep tools and pages with WebFetch" ;;
     find)
       has_flag '-delete' "${rest[@]+"${rest[@]}"}" && deny "\`find -delete\` deletes"
       has_flag '-exec*' "${rest[@]+"${rest[@]}"}" && deny "\`find -exec\` runs arbitrary commands"
       has_flag '-ok*' "${rest[@]+"${rest[@]}"}" && deny "\`find -ok\` runs arbitrary commands"
       has_flag '-fprint*' "${rest[@]+"${rest[@]}"}" && deny "\`find -fprint\` writes a file"
       has_flag '-fls' "${rest[@]+"${rest[@]}"}" && deny "\`find -fls\` writes a file" ;;
-    awk|gawk|mawk|nawk)
-      local a
-      for a in "${rest[@]+"${rest[@]}"}"; do
-        [[ $a =~ system[[:space:]]*\( ]] && deny "\`awk\` with system() runs arbitrary commands"
-        [[ $a =~ @(load|include) ]] && deny "\`awk\` with @load or @include loads code the guard cannot see"
-        case $a in
-          *'>'*) deny "\`awk\` with a redirection in its program" ;;
-          *'|'*) deny "\`awk\` with a pipe in its program" ;;
-          --file|--file=*|--exec|--exec=*|--include|--include=*|--load|--load=*) deny "\`awk $a\` loads a program the guard cannot see" ;;
-        esac
-      done
-      cluster_has fEil "${rest[@]+"${rest[@]}"}" && deny "\`awk\` with -f, -E, -i or -l loads a program the guard cannot see" ;;
     sort)
       cluster_has o "${rest[@]+"${rest[@]}"}" && deny "\`sort -o\` writes a file"
       has_flag '--output*' "${rest[@]+"${rest[@]}"}" && deny "\`sort --output\` writes a file"

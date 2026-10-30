@@ -50,7 +50,8 @@ finding of its own. **Skip what was verified recently**: a row in the plan's
 `## Externals verified` appendix dated within about a week is taken as read — say so in
 *Reproduced*. Re-fetch regardless when the plan's *claim about* the source changed, when the
 source moves fast (pricing, an unpinned latest version), or when no date is recorded. Some
-hosts 403 `WebFetch` and serve `curl`; a 403 is the tool failing, not the claim.
+hosts 403 `WebFetch`, which is the only way you have to a page; a 403 is the tool failing,
+not the claim, so report the source as unreachable from here.
 
 **3. The sequencing.** Check the `## State` DAG against the prose rather than assuming they
 agree:

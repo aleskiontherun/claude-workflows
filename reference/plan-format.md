@@ -314,9 +314,11 @@ This section says what verification **must do** and is written before the work; 
 ## The Externals verified appendix
 
 Optional, earned the moment a plan carries external claims. One row per source: the claim,
-the URL, the date it last reproduced, and the tool that worked — some hosts refuse `WebFetch`
-and serve `curl`, and a round that doesn't know that reports the source unverified.
-`plan-reviewer` takes a dated row under about a week old as read instead of re-fetching.
+the URL, the date it last reproduced, and the tool that worked. Some hosts refuse `WebFetch`
+and serve `curl`; the planner may use either, but the review agents are read-only and have
+`WebFetch` alone, so a row saying a source needed `curl` is what tells a round to take it as
+read rather than report it unreachable. `plan-reviewer` takes a dated row under about a week
+old as read instead of re-fetching.
 Write it during research while the fetches are fresh; update a row's date when a later round
 re-verifies it.
 

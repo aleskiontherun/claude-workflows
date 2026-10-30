@@ -35,7 +35,8 @@ tree*) makes ranges hints.
 **`external`** — a licence, an API shape, a competitor's behaviour, a number with a URL.
 Re-fetch it and compare against what the plan says, not what the finding says the plan says.
 A source you can't reach is neither refutation nor confirmation; say which happened. Some
-hosts answer `WebFetch` with 403 and serve `curl` — try both before calling it unreachable.
+hosts answer `WebFetch` with 403; `WebFetch` is the only way you have to a page, so say the
+source was unreachable from here rather than that the claim failed.
 
 **`completeness`** — a count, a table, "the N places that…", said to be short. Re-run the
 derivation the finding carries. If it looks wrong — a pathspec that stops at `src` when the
