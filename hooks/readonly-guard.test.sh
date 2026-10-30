@@ -244,6 +244,16 @@ expect deny  $R 'ls () ( rm -rf /tmp/x ); ls'
 expect deny  $R 'f() { rm -rf /tmp/x; }; f'
 expect deny  $R 'function ls { rm -rf /tmp/x; }; ls'
 expect deny  $R 'ls $((1+1))'
+expect deny  $R '((COLUMNS=PATH=0)); cat README.md'   # an arithmetic command assigns; the parens are not a subshell
+expect deny  $R '(( 1 + 1 ))'
+expect deny  $R 'echo "$[PATH=0]"; git log -1'       # the old arithmetic expansion, inside double quotes
+expect deny  $R 'echo $[1+1]'
+expect deny  $R 'echo "a$/b"'                         # a $ before anything but an anchor position is an expansion
+expect allow $R 'grep "foo$" src/x.c'
+expect allow $R 'grep foo$ src/x.c'
+expect allow $R "grep -E 'a$|b' src/x.c"
+expect allow $R 'grep -E "a$|b$" src/x.c'
+expect allow $R '(git -C /work/acme-api log -1 --format=%s$)'
 expect allow $R 'grep -E "(a|b)" /work/acme-api/f'
 expect allow $R 'find /work \( -name "a*" -o -name "b*" \) -print'
 # Unquoted globs are expanded against the working directory, so they are denied.

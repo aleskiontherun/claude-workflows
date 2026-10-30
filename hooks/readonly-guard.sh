@@ -17,8 +17,9 @@
 # before the split, so a `|` inside a grep pattern is not a pipe -- and the words of each
 # command are then taken from the unmasked text. A redirection to anywhere but /dev/null, a
 # `$(...)` or backtick substitution, a process substitution, any other `$` outside single
-# quotes, a brace expansion, an unquoted glob, a parenthesis other than a subshell around a
-# whole command, or text the tokenizer can't account for is denied outright -- the checks
+# quotes that is not a trailing regex anchor, a brace expansion, an unquoted glob, a
+# parenthesis other than a subshell around a whole command (`((...))` included), or text the
+# tokenizer can't account for is denied outright -- the checks
 # read words as written, and bash must not get to rewrite them or define functions behind
 # them. A failing command denies the whole call -- a `permissionDecision` of `deny` on
 # stdout, with the reason -- and nothing runs.
@@ -150,11 +151,12 @@ read_commands() {
     # there, with only its backslash escapes masked.
     my $sq = $raw;
     $sq =~ s/(\\.|"(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27)/ my $t = $1; substr($t,0,1) eq q(") ? do { (my $u = $t) =~ s{\\.}{QQ}gs; $u } : ("Q" x length($t)) /gse;
-    # A `$` expands only when a name, digit, brace, paren or special character follows,
-    # or -- outside any quotes -- when it opens `$\x27...\x27` or `$"..."`; a trailing `$`
-    # or one before `"`, `|` or `)` is a literal regex anchor.
+    # A `$` is literal only as a regex anchor: at the end, or before whitespace, `"`, `|`,
+    # `)`, `;` or `&`. Before anything else it is taken to expand -- a name, digit, brace,
+    # paren, `[` (the old arithmetic form) or special character -- and, outside any quotes,
+    # it opens `$\x27...\x27` or `$"..."`.
     if ($m =~ /\$(?=[\x27"])/) { print "EXPANSION\n"; exit 0 }
-    if ($sq =~ /\$(?=[A-Za-z0-9_{(@#?*!\$-])/) { print "EXPANSION\n"; exit 0 }
+    if ($sq =~ /\$(?![\s"|);&]|$)/) { print "EXPANSION\n"; exit 0 }
     if ($m =~ /\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}/) { print "BRACE\n"; exit 0 }
     # An unquoted glob is expanded against the working directory, where a repository under
     # review can plant a file named `-exec`; `[` and `]` on their own are the test command.
@@ -171,6 +173,8 @@ read_commands() {
       my $mseg = substr($m, $start, $i - $start);
       $start = $i + 1;
       next unless $seg =~ /\S/;
+      # `((` opens an arithmetic command, which assigns: `((COLUMNS=PATH=0))` sets PATH.
+      if ($mseg =~ /^\s*\(\(/) { print "\x1d\n"; next }
       # A subshell is its command. The parens to strip are the ones the masked text shows
       # bare -- an escaped `\)` is QQ there -- and masking is length-preserving, so the same
       # positions come off the raw text.
@@ -653,7 +657,7 @@ for line in "${lines[@]+"${lines[@]}"}"; do
     continue
   fi
   [ "$line" = $'\x1e' ] && deny "part of the command could not be parsed (an unbalanced quote?)"
-  [ "$line" = $'\x1d' ] && deny "parentheses other than a subshell around a whole command are not allowed (a function definition?)"
+  [ "$line" = $'\x1d' ] && deny "parentheses other than a subshell around a whole command are not allowed (a function definition, or arithmetic?)"
   IFS=$'\x1f' read -r -a words <<< "$line"
   check_segment "${words[@]+"${words[@]}"}"   # guarded: bash 3.2 calls an empty array unbound
 done
