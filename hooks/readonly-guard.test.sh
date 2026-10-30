@@ -387,6 +387,53 @@ expect deny  $R 'git -C /work/acme-api log --help'
 expect deny  $R 'git -C /work/acme-api log -n'
 expect deny  $R 'git -C /work/acme-api diff -O/tmp/order'
 expect deny  $R 'git -C /work/acme-api branch --sort -committerdate -r'   # a separate value with a dash
+
+# A `#` comment and a here-document: bash reads no quote inside either, the mask would, and
+# the two would disagree about where the next command starts.
+expect deny  $R $'true # it\'s\ntouch pwned\necho x #\''
+expect deny  $R 'ls # list'
+expect allow $R "grep '#include' src/main.c"
+expect allow $R 'ls a#b'
+expect deny  $R $'cat <<EOF\nx\nEOF'
+expect deny  $R $'cat <<-\'EOF\'\nx\nEOF'
+expect allow $R "jq . <<< '{}'"
+
+# printf -v assigns a variable; with PATH, the next command runs from the repository.
+expect deny  $R 'printf -v PATH %s tools:/usr/bin; git status'
+expect deny  $R 'printf -vPATH %s tools:/usr/bin; git status'
+expect allow $R "printf '%s\n' x"
+expect allow $R 'printf -- -v'
+
+# A bare repository committed in the diff carries a config git would obey; -C may not reach
+# one, and --git-dir, --work-tree and --bare name one outright.
+GUARD_TMP=$(mktemp -d)
+mkdir -p "$GUARD_TMP/x.git/objects" "$GUARD_TMP/x.git/refs" "$GUARD_TMP/x.git/sub" "$GUARD_TMP/repo/.git"
+: > "$GUARD_TMP/x.git/HEAD"
+expect deny  $R "git -C $GUARD_TMP/x.git diff HEAD~1 HEAD"
+expect deny  $R "git -C $GUARD_TMP/x.git/sub log"           # discovery walks up into the bare repo
+expect deny  $R "git -C $GUARD_TMP/repo -C ../x.git log"    # a second -C is relative to the first
+expect allow $R "git -C $GUARD_TMP/repo status"
+expect allow $R "git -C $GUARD_TMP/repo -C . status"
+expect allow $R 'git -C /work/acme-api status'              # a directory that does not exist is git's error
+expect deny  $R "git --git-dir=$GUARD_TMP/x.git --work-tree=. status"
+expect deny  $R "git --git-dir $GUARD_TMP/x.git status"
+expect deny  $R "git --work-tree=. status"
+expect deny  $R "git --bare -C $GUARD_TMP/x.git log"
+# A relative -C resolves against the hook input's cwd, and against the guard's own when it has none.
+cwd_decision() { # cwd command -> allow | deny
+  local out
+  out=$(jq -n --arg d "$1" --arg c "$2" '{hook_event_name:"PreToolUse",tool_name:"Bash",agent_type:"ontherun:reviewer",cwd:$d,tool_input:{command:$c}}' | guard 2>&1)
+  if [ -z "$out" ]; then printf 'allow\n'; else printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision'; fi
+}
+expect_cwd() { # allow|deny cwd command
+  local got; got=$(cwd_decision "$2" "$3")
+  if [ "$got" = "$1" ]; then ok "$1  [cwd] $3"; else bad "$1  [cwd] $3" "got: $got"; fi
+}
+expect_cwd deny  "$GUARD_TMP" 'git -C x.git log'
+expect_cwd allow "$GUARD_TMP" 'git -C repo log'
+got=$(cd "$GUARD_TMP" && decision $R 'git -C x.git log')
+if [ "$got" = deny ]; then ok "deny  [pwd] git -C x.git log"; else bad "deny  [pwd] git -C x.git log" "got: $got"; fi
+rm -rf "$GUARD_TMP"
 expect deny  $R 'git -C /work/acme-api fetch --auto-maintenance origin'
 expect deny  $R 'git -C /work/acme-api fetch --write-commit-graph origin'
 expect deny  $R 'git -C /work/acme-api remote -v add up git@x:y/z'

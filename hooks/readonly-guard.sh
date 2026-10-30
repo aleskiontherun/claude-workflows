@@ -33,6 +33,10 @@
 # the next word, which is then not an operand. git additionally takes any `--no-<option>`,
 # which only ever switches something off.
 #
+# A `#` comment and a here-document are denied too: bash reads a quote inside either as
+# text, the mask would read it as the start of a string, and the two would disagree about
+# where the next command begins. A here-string (`<<<`) is one word and is allowed.
+#
 #   NAME=value  before a command: only pager, locale and terminal variables; a pager's value
 #               must be cat, less, more, true or false
 #   git    diff log show rev-parse blame grep ls-files ls-tree ls-remote cat-file merge-base
@@ -43,9 +47,13 @@
 #          destination or a `+`; `branch` and `tag` take an operand only with a listing
 #          option; `symbolic-ref` takes at most one ref; `config` needs a --get*, --list or
 #          -l option, or the `get` or `list` subcommand. Before the subcommand: -C, -c with
-#          pager, color, abbreviation and locale keys (pager values as above), --git-dir,
-#          --work-tree, --namespace, --no-pager, -P, -p, --literal-pathspecs,
-#          --no-optional-locks, --no-replace-objects, --bare
+#          pager, color, abbreviation and locale keys (pager values as above), --namespace,
+#          --no-pager, -P, -p, --literal-pathspecs, --no-optional-locks,
+#          --no-replace-objects. Never --git-dir, --work-tree or --bare, and `-C <dir>` only
+#          where git's own discovery from <dir> would reach a checkout's `.git` before a bare
+#          repository: a repository under review can commit a bare one, with a `config`
+#          whose diff.external or core.fsmonitor is a program. (The hook's `cwd` resolves a
+#          relative <dir>; one that does not exist is left to git to fail on.)
 #   gh     pr list|view|checks|diff|status; issue list|view; repo view; run list|view;
 #          release list|view; auth status; api with no method other than GET and no body.
 #          Never -w / --web, which opens a browser
@@ -56,7 +64,9 @@
 #   date   in its printing forms, never -s or --set
 #   never  sed, awk, curl, wget or file: each hides write or exec modes in its program,
 #          format or options, and the agents have Read, Grep and WebFetch for what those did
-#   and    ls cat head tail wc grep egrep fgrep tr cut jq diff comm column nl echo printf
+#   printf never -v, which assigns a variable: `printf -v PATH` would redirect every command
+#          after it to a program of the repository's
+#   and    ls cat head tail wc grep egrep fgrep tr cut jq diff comm column nl echo
 #          true false test [ basename dirname realpath readlink pwd which type stat du cd,
 #          with any options: none of theirs writes a file or runs a program
 #   and every command named bare or under /usr/bin, /bin, /usr/local/bin or
@@ -66,9 +76,10 @@
 # Short options are read as clusters: `-avv` is `-a -v -v`, and a letter that takes a value
 # takes the rest of its word (`-n5`, `-L10,20`) or, with nothing attached, the next word.
 #
-# What it cannot see: a command the repository's own git configuration runs (a textconv
-# filter, core.fsmonitor set in .git/config) -- that is the human's checkout, not the
-# agent's doing.
+# What it cannot see: a command the configuration of the checkout git is run in runs (a
+# textconv filter, core.fsmonitor set in its .git/config) -- that is the human's checkout,
+# not the agent's doing. A diff cannot commit a `.git` entry, so the checkout's own config
+# is not the diff's to write; the bare repository it can commit is what the -C rule is for.
 #
 # Needs jq and perl. Always exits 0; the decision is the JSON, and a hook that exits
 # non-zero for a parse error would block every Bash call in the session. Without jq the
@@ -86,6 +97,8 @@ case ${agent#ontherun:} in
 esac
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) || exit 0
 [ -n "$cmd" ] || exit 0
+hook_cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null) || hook_cwd=""
+[ -n "$hook_cwd" ] || hook_cwd=$PWD
 
 deny() { # reason
   jq -n --arg r "$agent is read-only: $1" \
@@ -112,8 +125,16 @@ read_commands() {
     my $raw = $ENV{GUARD_CMD};
     my $m = $raw;
     # A backslash escape outside quotes is consumed first, so `\x27` is a literal quote and
-    # `\<newline>` a continuation, not the start of a string or a separator.
-    $m =~ s/(\\.|"(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27)/ length($1) == 2 && substr($1,0,1) eq "\\" ? "QQ" : substr($1,0,1) . ("Q" x (length($1)-2)) . substr($1,0,1) /gse;
+    # `\<newline>` a continuation, not the start of a string or a separator. A `#` that
+    # starts a word outside quotes opens a comment, inside which bash reads no quote; the
+    # walk consumes it to the end of the line so that it opens none here either, and the
+    # command is denied, since the tokenizer below reads the raw text.
+    my $comment = 0;
+    $m =~ s/(\\.|"(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27|(?:^|(?<=[\s;|&()]))#[^\n]*)/ substr($1,0,1) eq "#" ? do { $comment = 1; " " x length($1) } : length($1) == 2 && substr($1,0,1) eq "\\" ? "QQ" : substr($1,0,1) . ("Q" x (length($1)-2)) . substr($1,0,1) /gse;
+    if ($comment) { print "COMMENT\n"; exit 0 }
+    # The body of a here-document is text to bash and commands to the split below, and a
+    # quote in it would be read as a string here; `<<<` is a here-string, one word.
+    if ($m =~ /(?<!<)<<(?!<)/) { print "HEREDOC\n"; exit 0 }
     $m =~ s/([0-9]*&?>>?[ \t]*\/dev\/null|[0-9]*>&[0-9]+)/ " " x length($1) /ge;
     if ($m =~ />/) { print "REDIRECT\n"; exit 0 }
     # Anything bash would expand into a word the checks never saw: a `$` outside single
@@ -307,15 +328,38 @@ LOG_LONGVALS='max-count skip since after until before author committer grep grep
   min-parents max-parents glob exclude format encoding date
   decorate-refs decorate-refs-exclude filter missing max-age min-age default'
 
+# The directory git is run in, canonical, after the -C options so far: a later relative -C
+# is relative to it, as it is for git.
+GIT_DIR_BASE=""
+check_git_dir() { # the value of one -C
+  local d=$1
+  [ -n "$d" ] || return 0                       # git ignores an empty -C
+  case $d in /*) ;; *) d=${GIT_DIR_BASE:-$hook_cwd}/$d ;; esac
+  d=$(cd -P -- "$d" 2>/dev/null && pwd -P) || return 0   # not a directory: git fails on its own
+  GIT_DIR_BASE=$d
+  # Walk up as git's discovery does, and refuse to reach a bare repository -- `HEAD` beside
+  # `objects/` -- before a `.git`. A diff cannot commit a `.git` entry, but it can commit a
+  # bare repository whose config names a program to run.
+  while :; do
+    [ -e "$d/.git" ] && return 0
+    [ -e "$d/HEAD" ] && [ -d "$d/objects" ] && deny "\`git -C $1\` would run in a bare repository, whose config can run a program; use a checkout"
+    [ "$d" = / ] && return 0
+    d=${d%/*}; [ -n "$d" ] || d=/
+  done
+}
+
 check_git() { # words after `git`
   local -a w=("$@")
   local sub="" i=0
+  GIT_DIR_BASE=""
   while [ $i -lt ${#w[@]} ]; do
     case ${w[$i]} in
       -c) check_git_config "${w[$((i + 1))]:-}"; i=$((i + 2)); continue ;;
       -c?*) check_git_config "${w[$i]#-c}"; i=$((i + 1)); continue ;;
-      -C|--git-dir|--work-tree|--namespace) i=$((i + 2)); continue ;;
-      --git-dir=*|--work-tree=*|--namespace=*|--no-pager|-P|--paginate|-p|--literal-pathspecs|--no-optional-locks|--no-replace-objects|--bare) i=$((i + 1)); continue ;;
+      -C) check_git_dir "${w[$((i + 1))]:-}"; i=$((i + 2)); continue ;;
+      --namespace) i=$((i + 2)); continue ;;
+      --git-dir|--git-dir=*|--work-tree|--work-tree=*|--bare) deny "\`git ${w[$i]%%=*}\` points git at a repository of the command's choosing, whose config can run a program; use -C on a checkout" ;;
+      --namespace=*|--no-pager|-P|--paginate|-p|--literal-pathspecs|--no-optional-locks|--no-replace-objects) i=$((i + 1)); continue ;;
       -*) deny "unknown git option \`${w[$i]}\` before the subcommand" ;;
       *) sub=${w[$i]}; i=$((i + 1)); break ;;
     esac
@@ -518,7 +562,18 @@ check_segment() { # the words of one simple command, unquoted
       # Printing forms only: not -s / --set.
       lists 'uRj' 'dvrf' 'I' 'utc universal iso-8601 rfc-3339 rfc-email debug help version' 'date reference file'
       walk_opts date "${rest[@]+"${rest[@]}"}" ;;
-    ls|cat|head|tail|wc|grep|egrep|fgrep|tr|cut|jq|diff|comm|column|nl|echo|printf|true|false|test|'['|basename|dirname|realpath|readlink|pwd|which|type|stat|du|cd) ;;
+    printf)
+      # Not -v, which assigns a shell variable: `printf -v PATH` redirects every later command.
+      local a
+      for a in "${rest[@]+"${rest[@]}"}"; do
+        case $a in
+          --) break ;;
+          -v*) deny "\`printf -v\` assigns a variable, and the next command would run under it; print instead" ;;
+          -*) ;;
+          *) break ;;
+        esac
+      done ;;
+    ls|cat|head|tail|wc|grep|egrep|fgrep|tr|cut|jq|diff|comm|column|nl|echo|true|false|test|'['|basename|dirname|realpath|readlink|pwd|which|type|stat|du|cd) ;;
     *) deny "\`$prog\` is not on the read-only allowlist" ;;
   esac
   return 0
@@ -531,6 +586,8 @@ while IFS= read -r line; do
     case $line in
       OK) ;;
       REDIRECT) deny "redirecting output to a file is not allowed (only to /dev/null)" ;;
+      COMMENT) deny "a # comment is not allowed; drop it" ;;
+      HEREDOC) deny "a here-document is not allowed; pass the text as an argument or a here-string" ;;
       EXPANSION) deny "a \$ outside single quotes would expand into text the guard cannot check; write the value out, or single-quote it" ;;
       BRACE) deny "a brace expansion would expand into text the guard cannot check; write the words out" ;;
       GLOB) deny "an unquoted *, ? or [ would be expanded against the working directory; quote the pattern" ;;
