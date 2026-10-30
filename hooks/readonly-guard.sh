@@ -17,9 +17,10 @@
 # before the split, so a `|` inside a grep pattern is not a pipe -- and the words of each
 # command are then taken from the unmasked text, so a `sed` or `awk` program is inspected
 # as written. A redirection to anywhere but /dev/null, a `$(...)` or backtick substitution,
-# a process substitution, any other `$` outside single quotes, a brace expansion, or text the
-# tokenizer can't account for is denied outright -- the checks read words as written, and
-# bash must not get to rewrite them afterwards. A
+# a process substitution, any other `$` outside single quotes, a brace expansion, an unquoted
+# glob, a parenthesis other than a subshell around a whole command, or text the tokenizer
+# can't account for is denied outright -- the checks read words as written, and bash must
+# not get to rewrite them or define functions behind them. A
 # failing command denies the whole call -- a `permissionDecision` of `deny` on stdout, with
 # the reason -- and nothing runs.
 #
@@ -114,15 +115,26 @@ read_commands() {
     if ($m =~ /\$(?=[\x27"])/) { print "EXPANSION\n"; exit 0 }
     if ($sq =~ /\$(?=[A-Za-z0-9_{(@#?*!\$-])/) { print "EXPANSION\n"; exit 0 }
     if ($m =~ /\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}/) { print "BRACE\n"; exit 0 }
+    # An unquoted glob is expanded against the working directory, where a repository under
+    # review can plant a file named `-exec`; `[` and `]` on their own are the test command.
+    for my $w (split /\s+/, $m) {
+      next if $w eq "[" || $w eq "]";
+      if ($w =~ /[*?\[]/) { print "GLOB\n"; exit 0 }
+    }
     print "OK\n";
     my ($start, $len) = (0, length $m);
     for (my $i = 0; $i <= $len; $i++) {
       my $c = $i < $len ? substr($m, $i, 1) : "\n";
       next unless $c =~ /[\n;|&]/;
       my $seg = substr($raw, $start, $i - $start);
+      my $mseg = substr($m, $start, $i - $start);
       $start = $i + 1;
       next unless $seg =~ /\S/;
       $seg =~ s/^\s*\(+//; $seg =~ s/\)+\s*$//;   # a subshell is its command
+      $mseg =~ s/^\s*\(+//; $mseg =~ s/\)+\s*$//;
+      # Any other parenthesis is a function definition, a case pattern or arithmetic --
+      # grammar the checks do not read.
+      if ($mseg =~ /[()]/) { print "\x1d\n"; next }
       $seg =~ s/\\\n//g;                           # a continued line is one line
       my @w;
       my $after_redirect = 0;
@@ -279,16 +291,21 @@ check_git() { # words after `git`
         deny "\`git tag <name>\` creates a tag; list with -l, --list, --contains or --points-at"
       fi ;;
     config)
+      # Read forms only: a --get*/--list flag, or `get`/`list` as the subcommand itself.
       if has_flag '--unset*' "${rest[@]+"${rest[@]}"}" || has_flag '--add' "${rest[@]+"${rest[@]}"}" \
          || has_flag '--replace-all' "${rest[@]+"${rest[@]}"}" || has_flag '--edit' "${rest[@]+"${rest[@]}"}" \
-         || has_flag '-e' "${rest[@]+"${rest[@]}"}" || has_flag '--rename-section' "${rest[@]+"${rest[@]}"}" \
-         || has_flag '--remove-section' "${rest[@]+"${rest[@]}"}" || has_flag 'set' "${rest[@]+"${rest[@]}"}" \
-         || has_flag 'unset' "${rest[@]+"${rest[@]}"}"; then
+         || cluster_has e "${rest[@]+"${rest[@]}"}" || has_flag '--rename-section' "${rest[@]+"${rest[@]}"}" \
+         || has_flag '--remove-section' "${rest[@]+"${rest[@]}"}"; then
         deny "\`git config\` in a writing form"
       fi
+      local first="" r
+      for r in "${rest[@]+"${rest[@]}"}"; do case $r in -*) ;; *) first=$r; break ;; esac; done
+      case $first in
+        set|unset|edit|rename-section|remove-section|add|replace-all) deny "\`git config $first\` writes the configuration" ;;
+      esac
       has_flag '--get' "${rest[@]+"${rest[@]}"}" || has_flag '--get-all' "${rest[@]+"${rest[@]}"}" \
         || has_flag '--get-regexp' "${rest[@]+"${rest[@]}"}" || has_flag '--list' "${rest[@]+"${rest[@]}"}" \
-        || has_flag '-l' "${rest[@]+"${rest[@]}"}" || has_flag 'get' "${rest[@]+"${rest[@]}"}" || has_flag 'list' "${rest[@]+"${rest[@]}"}" \
+        || has_flag '-l' "${rest[@]+"${rest[@]}"}" || [ "$first" = get ] || [ "$first" = list ] \
         || deny "\`git config\` only with --get, --get-all, --get-regexp, --list or -l" ;;
     '') deny "\`git\` with no subcommand" ;;
     *) deny "\`git $sub\` is not on the read-only allowlist" ;;
@@ -378,11 +395,13 @@ while IFS= read -r line; do
       REDIRECT) deny "redirecting output to a file is not allowed (only to /dev/null)" ;;
       EXPANSION) deny "a \$ outside single quotes would expand into text the guard cannot check; write the value out, or single-quote it" ;;
       BRACE) deny "a brace expansion would expand into text the guard cannot check; write the words out" ;;
+      GLOB) deny "an unquoted *, ? or [ would be expanded against the working directory; quote the pattern" ;;
       *) deny "the command could not be parsed" ;;
     esac
     continue
   fi
   [ "$line" = $'\x1e' ] && deny "part of the command could not be parsed (an unbalanced quote?)"
+  [ "$line" = $'\x1d' ] && deny "parentheses other than a subshell around a whole command are not allowed (a function definition?)"
   IFS=$'\x1f' read -r -a words <<< "$line"
   check_segment "${words[@]}"
 done < <(read_commands)

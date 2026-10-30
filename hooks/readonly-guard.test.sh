@@ -215,6 +215,32 @@ expect deny  $R "TERM=-exec; find /work -name \"'\" -o -name \"*.py\" \"\$TERM\"
 expect deny  $R "echo \"it's\" \"\$HOME\" 'x'"
 expect allow $R "grep -c \"don't\" /work/acme-api/f"
 expect allow $R "grep -c \"it's\" /work/acme-api/f | grep -v '\$x'"
+# Function definitions, and parentheses that are not a subshell wrapper.
+expect deny  $R 'ls () ( rm -rf /tmp/x ); ls'
+expect deny  $R 'f() { rm -rf /tmp/x; }; f'
+expect deny  $R 'function ls { rm -rf /tmp/x; }; ls'
+expect deny  $R 'ls $((1+1))'
+expect allow $R 'grep -E "(a|b)" /work/acme-api/f'
+expect allow $R 'find /work \( -name "a*" -o -name "b*" \) -print'
+# Unquoted globs are expanded against the working directory, so they are denied.
+expect deny  $R 'find /work -name "*.py" -exe[c] rm -rf {} \;'
+expect deny  $R 'sort /work/f -[o] /tmp/x'
+expect deny  $R 'git -C /work/repo branch -[D] feature -a'
+expect deny  $R 'ls *.md'
+expect deny  $R 'gh api repos/acme/acme-api/pulls?state=all'
+expect allow $R 'ls "*.md"'
+expect allow $R "gh api 'repos/acme/acme-api/pulls?state=all'"
+expect allow $R '[ -f /work/acme-api/README.md ] && cat /work/acme-api/README.md'
+expect allow $R 'test -d /work/acme-api/src'
+# git config read forms only.
+expect allow $R 'git -C /work/acme-api config get remote.origin.url'
+expect allow $R 'git -C /work/acme-api config list'
+expect allow $R 'git -C /work/acme-api config -l'
+expect deny  $R 'git -C /work/acme-api config rename-section remote.origin get'
+expect deny  $R 'git -C /work/acme-api config remove-section get'
+expect deny  $R 'git -C /work/acme-api config edit get'
+expect deny  $R 'git -C /work/acme-api config set user.name get'
+expect deny  $R 'git -C /work/acme-api config -e'
 # A quoted operator is an argument, and the word after it is checked like any other.
 expect deny  $R 'find /work ! -name "<" -delete'
 expect deny  $R 'rg x /work ">" --pre /work/repo/tools/evil.sh'
