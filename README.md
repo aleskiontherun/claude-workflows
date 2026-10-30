@@ -13,7 +13,8 @@ part. The orchestrating session only routes.
 
 Everything ships as one plugin, `ontherun`, so skills are `/ontherun:implement` and agents are
 `ontherun:reviewer`. The namespace is what keeps them distinct from built-in commands
-(`/code-review`) and other plugins' agents (`code-reviewer`). The The scripts in `bin/` carry an `ontherun-` prefix because that directory goes on the Bash `PATH`.
+(`/code-review`) and other plugins' agents (`code-reviewer`). The scripts in `bin/` carry an
+`ontherun-` prefix because that directory goes on the Bash `PATH`.
 
 ## What's inside
 

@@ -4,7 +4,7 @@
 # the workspace root", "which ref is this repo's default branch" and "which GitHub repo is
 # this checkout" the same way.
 #
-#   . "$(wf_here)/ontherun-lib.sh"      -- see any wf- script for the two-line preamble
+#   . "$(wf_here)/ontherun-lib.sh"      -- see any ontherun- script for the two-line preamble
 #
 # Every function prints its answer and returns non-zero when it has none; none of them
 # exits, so a caller decides what a missing answer means.

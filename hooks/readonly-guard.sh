@@ -46,6 +46,10 @@
 #          true false test [ date basename dirname realpath readlink pwd which type file
 #          stat du cd
 #
+# Short options are read as clusters: the run of letters after a lone dash is checked for a
+# forbidden letter, so `-sSo file` is `-o` and `-fbody=x` is `-f`. The price is that a
+# harmless attached value which happens to contain such a letter is denied too.
+#
 # What it cannot see: a command the repository's own git configuration runs (a textconv
 # filter, core.fsmonitor set in .git/config) -- that is the human's checkout, not the
 # agent's doing.
@@ -134,6 +138,21 @@ has_flag() { # pattern words... -> 0 when a word matches the glob pattern
   return 1
 }
 
+# Short options cluster (`-sSo`) and take attached values (`-XPOST`, `-fbody=x`), so a flag
+# is never just a word. cluster_has looks at the run of letters after a lone dash and says
+# whether any of the given letters is in it; a caller that allows one attached form (`-XGET`,
+# `-o/dev/null`) checks that word first and skips it.
+cluster_has() { # letters words... -> 0 when a short-option word carries one of the letters
+  local letters=$1 w run; shift
+  for w in "$@"; do
+    case $w in --*|-) continue ;; -*) ;; *) continue ;; esac
+    run=${w#-}; run=${run%%[^A-Za-z]*}
+    # shellcheck disable=SC2254
+    case $run in *[$letters]*) return 0 ;; esac
+  done
+  return 1
+}
+
 pager_value_ok() { # value -> 0 when it is a pager git or gh may run
   case $1 in cat|less|more|true|false|'') return 0 ;; *) return 1 ;; esac
 }
@@ -183,15 +202,18 @@ check_git() { # words after `git`
   case $sub in
     diff|log|show|rev-parse|blame|ls-files|ls-tree|ls-remote|cat-file|merge-base|rev-list|status|fetch|describe|shortlog|name-rev|for-each-ref|show-ref|count-objects|check-ignore) ;;
     grep)
-      has_flag '-O*' "${rest[@]+"${rest[@]}"}" && deny "\`git grep -O\` runs a program" ;;
+      cluster_has O "${rest[@]+"${rest[@]}"}" && deny "\`git grep -O\` runs a program" ;;
     symbolic-ref)
+      if cluster_has dm "${rest[@]+"${rest[@]}"}" || has_flag '--delete' "${rest[@]+"${rest[@]}"}"; then
+        deny "\`git symbolic-ref -d\` deletes a ref"
+      fi
       [ "$(nonflags "${rest[@]+"${rest[@]}"}")" -le 1 ] || deny "\`git symbolic-ref\` with two refs writes one" ;;
     worktree)
       [ "${rest[0]:-}" = list ] || deny "\`git worktree ${rest[0]:-}\` changes worktrees; only \`list\` is allowed" ;;
     remote)
       case ${rest[0]:-} in ''|-v|--verbose|show|get-url) ;; *) deny "\`git remote ${rest[0]}\` changes remotes" ;; esac ;;
     branch)
-      if has_flag '-[dDmMcCuf]' "${rest[@]+"${rest[@]}"}" || has_flag '-[dDmMcCuf][a-zA-Z]*' "${rest[@]+"${rest[@]}"}" \
+      if cluster_has dDmMcCuf "${rest[@]+"${rest[@]}"}" \
          || has_flag '--delete' "${rest[@]+"${rest[@]}"}" || has_flag '--move' "${rest[@]+"${rest[@]}"}" \
          || has_flag '--copy' "${rest[@]+"${rest[@]}"}" || has_flag '--force' "${rest[@]+"${rest[@]}"}" \
          || has_flag '--set-upstream-to*' "${rest[@]+"${rest[@]}"}" || has_flag '--unset-upstream' "${rest[@]+"${rest[@]}"}" \
@@ -199,22 +221,23 @@ check_git() { # words after `git`
          || has_flag '--no-track' "${rest[@]+"${rest[@]}"}"; then
         deny "\`git branch\` with a flag that creates, moves or deletes a branch"
       fi
+      # -v is verbosity, not list mode: `git branch -v new` creates `new`.
       if [ "$(nonflags "${rest[@]+"${rest[@]}"}")" -gt 0 ] \
-         && ! { has_flag '-[arlv]*' "${rest[@]+"${rest[@]}"}" || has_flag '--list' "${rest[@]+"${rest[@]}"}" \
+         && ! { cluster_has arl "${rest[@]+"${rest[@]}"}" || has_flag '--list' "${rest[@]+"${rest[@]}"}" \
                 || has_flag '--merged' "${rest[@]+"${rest[@]}"}" || has_flag '--no-merged' "${rest[@]+"${rest[@]}"}" \
                 || has_flag '--contains' "${rest[@]+"${rest[@]}"}" || has_flag '--no-contains' "${rest[@]+"${rest[@]}"}" \
                 || has_flag '--points-at' "${rest[@]+"${rest[@]}"}" || has_flag '--show-current' "${rest[@]+"${rest[@]}"}"; }; then
         deny "\`git branch <name>\` creates a branch; list with -a, -r, --list, --merged, --contains or --points-at"
       fi ;;
     tag)
-      if has_flag '-[dasfFm]' "${rest[@]+"${rest[@]}"}" || has_flag '-[dasfFm][a-zA-Z]*' "${rest[@]+"${rest[@]}"}" \
+      if cluster_has dasfFmu "${rest[@]+"${rest[@]}"}" \
          || has_flag '--delete' "${rest[@]+"${rest[@]}"}" || has_flag '--annotate' "${rest[@]+"${rest[@]}"}" \
          || has_flag '--sign' "${rest[@]+"${rest[@]}"}" || has_flag '--force' "${rest[@]+"${rest[@]}"}" \
          || has_flag '--message*' "${rest[@]+"${rest[@]}"}" || has_flag '--file*' "${rest[@]+"${rest[@]}"}"; then
         deny "\`git tag\` with a flag that creates or deletes a tag"
       fi
       if [ "$(nonflags "${rest[@]+"${rest[@]}"}")" -gt 0 ] \
-         && ! { has_flag '-l' "${rest[@]+"${rest[@]}"}" || has_flag '--list' "${rest[@]+"${rest[@]}"}" \
+         && ! { cluster_has l "${rest[@]+"${rest[@]}"}" || has_flag '--list' "${rest[@]+"${rest[@]}"}" \
                 || has_flag '--contains' "${rest[@]+"${rest[@]}"}" || has_flag '--no-contains' "${rest[@]+"${rest[@]}"}" \
                 || has_flag '--points-at' "${rest[@]+"${rest[@]}"}" || has_flag '--merged' "${rest[@]+"${rest[@]}"}" \
                 || has_flag '--no-merged' "${rest[@]+"${rest[@]}"}"; }; then
@@ -244,49 +267,59 @@ check_gh() { # words after `gh`
   esac
   if [ "$sub" = api ]; then
     shift
-    local -a w=("$@")
+    local -a w=("$@") others=()
     local i=0
     while [ $i -lt ${#w[@]} ]; do
       case ${w[$i]} in
         -X|--method)
           case ${w[$((i + 1))]:-} in GET|get) ;; *) deny "\`gh api\` with a method other than GET" ;; esac
           i=$((i + 2)); continue ;;
-        -X*|--method=*)
-          case ${w[$i]#*[X=]} in GET|get) ;; *) deny "\`gh api\` with a method other than GET" ;; esac ;;
-        -f|-F|--field|--raw-field|--input|--field=*|--raw-field=*|--input=*)
+        -XGET|-Xget|--method=GET|--method=get) ;;
+        --method=*) deny "\`gh api\` with a method other than GET" ;;
+        --field|--raw-field|--input|--field=*|--raw-field=*|--input=*)
           deny "\`gh api\` with a request body" ;;
+        *) others+=("${w[$i]}") ;;
       esac
       i=$((i + 1))
     done
+    cluster_has X "${others[@]+"${others[@]}"}" && deny "\`gh api\` with a method other than GET"
+    cluster_has fF "${others[@]+"${others[@]}"}" && deny "\`gh api\` with a request body"
     return 0
   fi
   deny "\`gh $sub $act\` is not on the read-only allowlist"
 }
 
 check_curl() { # words after `curl`
-  local -a w=("$@")
+  local -a w=("$@") others=()
   local i=0
   while [ $i -lt ${#w[@]} ]; do
     case ${w[$i]} in
       -X|--request)
         case ${w[$((i + 1))]:-} in GET|HEAD|get|head) ;; *) deny "\`curl\` with a method other than GET or HEAD" ;; esac
         i=$((i + 2)); continue ;;
-      -X*|--request=*)
-        case ${w[$i]#*[X=]} in GET|HEAD|get|head) ;; *) deny "\`curl\` with a method other than GET or HEAD" ;; esac ;;
-      -d|--data|--data-*|-F|--form|--form-string|-T|--upload-file|--json|--data=*|--form=*|--json=*)
+      -XGET|-XHEAD|-Xget|-Xhead|--request=GET|--request=HEAD|--request=get|--request=head) ;;
+      --request=*) deny "\`curl\` with a method other than GET or HEAD" ;;
+      --data|--data-*|--form|--form-string|--upload-file|--json|--data=*|--form=*|--json=*)
         deny "\`curl\` with a request body" ;;
       -o|--output)
         [ "${w[$((i + 1))]:-}" = /dev/null ] || deny "\`curl\` writing to a file; only -o /dev/null is allowed"
         i=$((i + 2)); continue ;;
-      -o*|--output=*)
-        [ "${w[$i]#*[o=]}" = /dev/null ] || deny "\`curl\` writing to a file; only -o /dev/null is allowed" ;;
-      -O|--remote-name|--remote-name-all|-J|--remote-header-name|--create-dirs|--output-dir|--output-dir=*|-c|--cookie-jar|--cookie-jar=*|-D|--dump-header|--dump-header=*|--trace|--trace-ascii|--trace-ascii=*|--trace=*|--etag-save|--etag-save=*|--libcurl|--libcurl=*|--stderr|--stderr=*)
+      -o/dev/null|--output=/dev/null) ;;
+      --output=*) deny "\`curl\` writing to a file; only -o /dev/null is allowed" ;;
+      --remote-name|--remote-name-all|--remote-header-name|--create-dirs|--output-dir|--output-dir=*|--cookie-jar|--cookie-jar=*|--dump-header|--dump-header=*|--trace|--trace-ascii|--trace-ascii=*|--trace=*|--etag-save|--etag-save=*|--libcurl|--libcurl=*|--stderr|--stderr=*)
         deny "\`curl ${w[$i]%%=*}\` writes a file" ;;
-      -K|--config|--config=*|-K?*)
-        deny "\`curl ${w[$i]%%=*}\` reads options from a file the guard cannot see" ;;
+      --config|--config=*)
+        deny "\`curl --config\` reads options from a file the guard cannot see" ;;
+      *) others+=("${w[$i]}") ;;
     esac
     i=$((i + 1))
   done
+  # The short forms, clustered or attached, once the allowed exact words above are out.
+  cluster_has X "${others[@]+"${others[@]}"}" && deny "\`curl\` with a method other than GET or HEAD"
+  cluster_has dFT "${others[@]+"${others[@]}"}" && deny "\`curl\` with a request body"
+  cluster_has oOJcD "${others[@]+"${others[@]}"}" && deny "\`curl\` writing to a file; only -o /dev/null is allowed"
+  cluster_has K "${others[@]+"${others[@]}"}" && deny "\`curl -K\` reads options from a file the guard cannot see"
+  return 0
 }
 
 check_sed() { # words after `sed`
@@ -350,11 +383,12 @@ check_segment() { # the words of one simple command, unquoted
           *'>'*) deny "\`awk\` with a redirection in its program" ;;
           *'|'*) deny "\`awk\` with a pipe in its program" ;;
           *'system('*) deny "\`awk\` with system() runs arbitrary commands" ;;
-          -f|-f?*|--file|--file=*|-E|--exec|--exec=*|-i|--include|--include=*|-l|--load|--load=*) deny "\`awk $a\` loads a program the guard cannot see" ;;
+          --file|--file=*|--exec|--exec=*|--include|--include=*|--load|--load=*) deny "\`awk $a\` loads a program the guard cannot see" ;;
         esac
-      done ;;
+      done
+      cluster_has fEil "${rest[@]+"${rest[@]}"}" && deny "\`awk\` with -f, -E, -i or -l loads a program the guard cannot see" ;;
     sort)
-      has_flag '-o*' "${rest[@]+"${rest[@]}"}" && deny "\`sort -o\` writes a file"
+      cluster_has o "${rest[@]+"${rest[@]}"}" && deny "\`sort -o\` writes a file"
       has_flag '--output*' "${rest[@]+"${rest[@]}"}" && deny "\`sort --output\` writes a file"
       has_flag '--compress-program*' "${rest[@]+"${rest[@]}"}" && deny "\`sort --compress-program\` runs a program" ;;
     uniq)
