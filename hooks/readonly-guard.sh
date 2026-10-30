@@ -31,7 +31,8 @@
 #          check-ignore; `fetch` without a refspec destination, --stdin, or a forcing,
 #          pruning or upstream flag; `symbolic-ref` with one ref; `worktree list`;
 #          `remote` with -v, show or get-url; `branch` and `tag` in their listing forms;
-#          `config` only with --get, --get-all, --get-regexp, --list or -l. Global `-c`
+#          `config` only in a read form: --get, --get-all, --get-regexp, --list, -l, or the
+#          `get` and `list` subcommands. Global `-c`
 #          only for pager, color, abbreviation and locale keys, with the pager values above.
 #          Never --output, --ext-diff, --open-files-in-pager (-O), --upload-pack, --exec-path
 #          or --config-env
@@ -89,10 +90,11 @@ case $cmd in
 esac
 
 # Mask quoted strings length for length, drop the redirections that are allowed, refuse any
-# other `>`, any expansion and any brace group, then split into simple commands and tokenize
-# each from the raw text. One line per command, words separated by \x1f; the first line is
-# OK, REDIRECT, EXPANSION or BRACE; a line that is a lone \x1e marks text the tokenizer could
-# not account for.
+# other `>`, any expansion, any brace group and any unquoted glob, then split into simple
+# commands and tokenize each from the raw text. One line per command, words separated by
+# \x1f; the first line is OK, REDIRECT, EXPANSION, BRACE or GLOB; a line that is a lone \x1e
+# marks text the tokenizer could not account for, and a lone \x1d a parenthesis that is not a
+# subshell wrapper.
 read_commands() {
   GUARD_CMD=$cmd perl -e '
     my $raw = $ENV{GUARD_CMD};
@@ -306,7 +308,7 @@ check_git() { # words after `git`
       has_flag '--get' "${rest[@]+"${rest[@]}"}" || has_flag '--get-all' "${rest[@]+"${rest[@]}"}" \
         || has_flag '--get-regexp' "${rest[@]+"${rest[@]}"}" || has_flag '--list' "${rest[@]+"${rest[@]}"}" \
         || has_flag '-l' "${rest[@]+"${rest[@]}"}" || [ "$first" = get ] || [ "$first" = list ] \
-        || deny "\`git config\` only with --get, --get-all, --get-regexp, --list or -l" ;;
+        || deny "\`git config\` only in a read form: --get, --get-all, --get-regexp, --list, -l, or the get and list subcommands" ;;
     '') deny "\`git\` with no subcommand" ;;
     *) deny "\`git $sub\` is not on the read-only allowlist" ;;
   esac
