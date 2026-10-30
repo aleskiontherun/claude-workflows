@@ -196,11 +196,13 @@ walk_opts() { # label words...
     w=$1; shift
     if [ -n "$need_value" ]; then
       need_value=""
-      # A separate value shaped like an option -- `--word`, or a dash and letters only -- is
-      # one: a tool whose option takes an optional argument reads the next word as a new
-      # option, so the guard must too. `-1`, `-label:x` or `-5,+3` are values.
+      # A separate value shaped like an option -- `--word`, a dash and letters only, or a dash,
+      # letters and `=value` -- is one: a tool whose option takes an optional argument reads
+      # the next word as a new option, so the guard must too, and gh's parser reads `-w=1` as
+      # `--web=true`. `-1`, `-label:x` or `-5,+3` are values.
       case $w in
         --[A-Za-z]*) deny "\`$label\` has an option value that looks like an option; write it as --option=value" ;;
+        -[A-Za-z]*=*) deny "\`$label\` has an option value that looks like an option; write it as --option=value or put the dash in brackets" ;;
         -[A-Za-z]*) [ -n "${w//[-A-Za-z]/}" ] || deny "\`$label\` has an option value that looks like an option; write it as --option=value or put the dash in brackets" ;;
       esac
       continue
