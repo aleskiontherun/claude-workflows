@@ -11,6 +11,16 @@ set -u
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 GUARD="$SCRIPT_DIR/readonly-guard.sh"
+# Which bash runs the guard. The suite runs itself twice when the stock /bin/bash differs
+# from the one on PATH: on macOS that is 3.2, where an empty array under `set -u` is unbound.
+GUARD_BASH=${GUARD_BASH:-bash}
+if [ -z "${GUARD_BASH_INNER:-}" ] && [ -x /bin/bash ] \
+   && [ "$(/bin/bash -c 'echo "$BASH_VERSION"')" != "$(bash -c 'echo "$BASH_VERSION"')" ]; then
+  GUARD_BASH=/bin/bash GUARD_BASH_INNER=1 "$0"; inner_rc=$?
+else
+  inner_rc=0
+fi
+guard() { "$GUARD_BASH" "$GUARD"; }
 
 pass=0
 fail=0
@@ -21,7 +31,7 @@ decision() { # agent_type command -> allow | deny | <error>
   local out status
   out=$(jq -n --arg a "$1" --arg c "$2" \
     '{hook_event_name:"PreToolUse",tool_name:"Bash",agent_type:$a,tool_input:{command:$c}} | if $a == "" then del(.agent_type) else . end' \
-    | "$GUARD" 2>&1); status=$?
+    | guard 2>&1); status=$?
   [ $status -eq 0 ] || { printf 'exit %s: %s\n' "$status" "$out"; return; }
   if [ -z "$out" ]; then printf 'allow\n'; return; fi
   printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null || printf 'bad json: %s\n' "$out"
@@ -34,7 +44,7 @@ expect() { # allow|deny agent command
   else bad "$want  [$agent] ${cmd//$'\n'/ }" "got: $got"; fi
 }
 
-echo "readonly-guard.sh"
+echo "readonly-guard.sh under $("$GUARD_BASH" -c 'echo "${BASH_VERSION%%(*}"')"
 
 # ------------------------------------------------------------- who it applies to
 expect allow ""                   'rm -rf build'
@@ -50,9 +60,9 @@ expect deny  "plan-validator"     'touch x'
 expect deny  "fold-checker"       'python3 -c "print(1)"'
 
 # Unparseable input is no decision.
-out=$(printf 'not json' | "$GUARD" 2>&1); status=$?
+out=$(printf 'not json' | guard 2>&1); status=$?
 if [ $status -eq 0 ] && [ -z "$out" ]; then ok "non-JSON stdin -> no decision"; else bad "non-JSON stdin -> no decision" "exit $status: $out"; fi
-out=$(jq -n '{tool_name:"Bash",agent_type:"reviewer",tool_input:{}}' | "$GUARD" 2>&1); status=$?
+out=$(jq -n '{tool_name:"Bash",agent_type:"reviewer",tool_input:{}}' | guard 2>&1); status=$?
 if [ $status -eq 0 ] && [ -z "$out" ]; then ok "no command -> no decision"; else bad "no command -> no decision" "exit $status: $out"; fi
 
 # --------------------------------------------------------------------- git
@@ -252,7 +262,7 @@ expect allow $R "grep -c '<' /work/acme-api/f 2>/dev/null"
 # A checker that cannot run denies rather than falling through.
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/bin"; printf '#!/bin/sh\nexit 1\n' > "$TMP/bin/perl"; chmod +x "$TMP/bin/perl"
-out=$(jq -n '{tool_name:"Bash",agent_type:"reviewer",tool_input:{command:"ls /work"}}' | PATH="$TMP/bin:$PATH" "$GUARD" 2>/dev/null)
+out=$(jq -n '{tool_name:"Bash",agent_type:"reviewer",tool_input:{command:"ls /work"}}' | PATH="$TMP/bin:$PATH" guard 2>/dev/null)
 if [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = deny ]; then ok "perl failing -> deny"; else bad "perl failing -> deny" "got: $out"; fi
 expect allow $R 'echo \$HOME'
 expect allow $R 'git -C /work/acme-api log -L10,20:src/a.py'
@@ -311,12 +321,6 @@ expect allow $R 'git -C /work/acme-api log -- src/'
 expect deny  $R "''; rm -rf /tmp/x"
 expect deny  $R '"" ; rm -rf /tmp/x'
 expect deny  $R "'' ls /work/acme-api"   # an empty command name; bash rejects it too
-if [ -x /bin/bash ]; then
-  out=$(jq -n '{tool_name:"Bash",agent_type:"reviewer",tool_input:{command:"''; rm -rf /tmp/x"}}' | /bin/bash "$GUARD" 2>&1); status=$?
-  if [ $status -eq 0 ] && [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = deny ]; then
-    ok "under /bin/bash $(/bin/bash -c 'echo ${BASH_VERSION%%(*}'): empty word -> deny"
-  else bad "under /bin/bash: empty word -> deny" "exit $status: $out"; fi
-fi
 expect deny  $R './tools/git log'
 expect deny  $R '/work/acme-api/node_modules/.bin/cat x'
 expect deny  $R '/tmp/git log'
@@ -337,4 +341,4 @@ expect deny  $P 'wget -q https://example.com/file'
 expect deny  $R 'git -C /work/acme-api log -1 | sed -n 1p'
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
-[ "$fail" -eq 0 ]
+[ "$fail" -eq 0 ] && [ "$inner_rc" -eq 0 ]
