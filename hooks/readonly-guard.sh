@@ -17,7 +17,9 @@
 # before the split, so a `|` inside a grep pattern is not a pipe -- and the words of each
 # command are then taken from the unmasked text, so a `sed` or `awk` program is inspected
 # as written. A redirection to anywhere but /dev/null, a `$(...)` or backtick substitution,
-# a process substitution, or text the tokenizer can't account for is denied outright. A
+# a process substitution, any other `$` outside single quotes, a brace expansion, or text the
+# tokenizer can't account for is denied outright -- the checks read words as written, and
+# bash must not get to rewrite them afterwards. A
 # failing command denies the whole call -- a `permissionDecision` of `deny` on stdout, with
 # the reason -- and nothing runs.
 #
@@ -84,9 +86,10 @@ case $cmd in
 esac
 
 # Mask quoted strings length for length, drop the redirections that are allowed, refuse any
-# other `>`, then split into simple commands and tokenize each from the raw text. One line
-# per command, words separated by \x1f; the first line is OK or REDIRECT; a line that is a
-# lone \x1e marks text the tokenizer could not account for.
+# other `>`, any expansion and any brace group, then split into simple commands and tokenize
+# each from the raw text. One line per command, words separated by \x1f; the first line is
+# OK, REDIRECT, EXPANSION or BRACE; a line that is a lone \x1e marks text the tokenizer could
+# not account for.
 read_commands() {
   GUARD_CMD=$cmd perl -e '
     my $raw = $ENV{GUARD_CMD};
@@ -96,6 +99,16 @@ read_commands() {
     $m =~ s/(\\.|"(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27)/ length($1) == 2 && substr($1,0,1) eq "\\" ? "QQ" : substr($1,0,1) . ("Q" x (length($1)-2)) . substr($1,0,1) /gse;
     $m =~ s/([0-9]*&?>>?[ \t]*\/dev\/null|[0-9]*>&[0-9]+)/ " " x length($1) /ge;
     if ($m =~ />/) { print "REDIRECT\n"; exit 0 }
+    # Anything bash would expand into a word the checks never saw: a `$` outside single
+    # quotes (a variable, `${...}`, `$\x27...\x27`), or a brace group outside quotes.
+    my $sq = $raw;
+    $sq =~ s/(\\.|\x27[^\x27]*\x27)/ "Q" x length($1) /gse;
+    # A `$` expands only when a name, digit, brace, paren or special character follows,
+    # or -- outside any quotes -- when it opens `$\x27...\x27` or `$"..."`; a trailing `$`
+    # or one before `"`, `|` or `)` is a literal regex anchor.
+    if ($m =~ /\$(?=[\x27"])/) { print "EXPANSION\n"; exit 0 }
+    if ($sq =~ /\$(?=[A-Za-z0-9_{(@#?*!\$-])/) { print "EXPANSION\n"; exit 0 }
+    if ($m =~ /\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}/) { print "BRACE\n"; exit 0 }
     print "OK\n";
     my ($start, $len) = (0, length $m);
     for (my $i = 0; $i <= $len; $i++) {
@@ -354,7 +367,13 @@ first=true
 while IFS= read -r line; do
   if $first; then
     first=false
-    [ "$line" = OK ] || deny "redirecting output to a file is not allowed (only to /dev/null)"
+    case $line in
+      OK) ;;
+      REDIRECT) deny "redirecting output to a file is not allowed (only to /dev/null)" ;;
+      EXPANSION) deny "a \$ outside single quotes would expand into text the guard cannot check; write the value out, or single-quote it" ;;
+      BRACE) deny "a brace expansion would expand into text the guard cannot check; write the words out" ;;
+      *) deny "the command could not be parsed" ;;
+    esac
     continue
   fi
   [ "$line" = $'\x1e' ] && deny "part of the command could not be parsed (an unbalanced quote?)"

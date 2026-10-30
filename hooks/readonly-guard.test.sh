@@ -195,6 +195,26 @@ expect deny  $R 'echo hi > file.txt'
 expect deny  $R 'echo "$(git -C /work/acme-api rev-parse HEAD)"'
 expect deny  $R 'cat `ls`'
 expect deny  $R 'diff <(git show a:f) <(git show b:f)'
+# Expansions bash would perform after the guard has read the words.
+expect deny  $R "find /work -name '*.py' \$'-exec' rm -rf {} \\;"
+expect deny  $R 'find /work -name "*.py" ${HOME:0:0}-exec rm -rf {} \;'
+expect deny  $R 'TERM=-exec; find /work -name "*.py" $TERM rm -rf {} \;'
+expect deny  $R "find /work -name '*.py' \$'-delete'"
+expect deny  $R "git -C /work log \$'--output=/tmp/evil'"
+expect deny  $R 'git -C /work log --{output=/tmp/evil,}'
+expect deny  $R "printf evil | sort \$'-o'/tmp/evil"
+expect deny  $R 'cat "$HOME/.ssh/id_rsa"'
+expect deny  $R 'cat ${HOME}/x'
+expect deny  $R 'ls /work/{a,b}'
+expect allow $R "grep -c '^\$' /work/acme-api/f"
+expect allow $R 'grep -E "foo$|bar$" /work/acme-api/f'
+expect allow $R 'git -C /work/acme-api grep -nE "TODO$" origin/main -- src/'
+expect deny  $R 'grep -E "foo$HOME" /work/acme-api/f'
+expect deny  $R 'find /work -name "*.py" $"-exec" rm -rf {} \;'
+expect allow $R 'echo \$HOME'
+expect allow $R 'git -C /work/acme-api log -L10,20:src/a.py'
+expect allow $R 'find /work -name "*.py" -newer /work/x'
+expect allow $R "git -C /work/acme-api log --format='%h {%an}' -3"
 expect deny  $R "echo \\' ; rm -rf /tmp/x \\'"
 expect deny  $R "ls \\' | tee /tmp/x \\'"
 expect deny  $R 'echo \" ; rm -rf /tmp/x \"'
