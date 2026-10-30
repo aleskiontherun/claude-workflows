@@ -59,9 +59,13 @@ caller is one of the five review agents (`reviewer`, `validator`, `plan-reviewer
 `plan-validator`, `fold-checker`), allows only read-only forms of `git`, `gh`, `find` and a
 list of plain filters, denying anything else with the reason — including the environment
 variables and `git -c` keys a call may set, since a pager or an external diff is a program
-too. `sed`, `awk` and `curl` are denied outright: each hides write or exec modes in its
-program text, and the agents have `Read`, `Grep` and `WebFetch` for what those did. Its
-header lists the allowlist; `readonly-guard.test.sh` pins it.
+too. Every check is an allowlist, down to the option: where a program has any option that
+writes, changes a ref or runs something, each option it is given must appear on that
+program's list by its full spelling, so an unknown option, or an abbreviation of a known
+one, is denied rather than reasoned about. `sed`, `awk` and `curl` are denied outright:
+each hides write or exec modes in its program text, and the agents have `Read`, `Grep` and
+`WebFetch` for what those did. Its header lists the allowlist; `readonly-guard.test.sh`
+pins it.
 
 **Scripts** in `bin/` — deterministic checks the skills run instead of spending a reviewer
 round on them. Each has a header with usage and exit codes, and a `.test.sh` beside it. The

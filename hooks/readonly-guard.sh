@@ -15,46 +15,56 @@
 # For those agents the command is split into simple commands on newlines, `;`, `|`, `&`,
 # `&&` and `||`, and every one has to pass. Quoted strings are masked, length for length,
 # before the split, so a `|` inside a grep pattern is not a pipe -- and the words of each
-# command are then taken from the unmasked text, so a `sed` or `awk` program is inspected
-# as written. A redirection to anywhere but /dev/null, a `$(...)` or backtick substitution,
-# a process substitution, any other `$` outside single quotes, a brace expansion, an unquoted
-# glob, a parenthesis other than a subshell around a whole command, or text the tokenizer
-# can't account for is denied outright -- the checks read words as written, and bash must
-# not get to rewrite them or define functions behind them. A
-# failing command denies the whole call -- a `permissionDecision` of `deny` on stdout, with
-# the reason -- and nothing runs.
+# command are then taken from the unmasked text. A redirection to anywhere but /dev/null, a
+# `$(...)` or backtick substitution, a process substitution, any other `$` outside single
+# quotes, a brace expansion, an unquoted glob, a parenthesis other than a subshell around a
+# whole command, or text the tokenizer can't account for is denied outright -- the checks
+# read words as written, and bash must not get to rewrite them or define functions behind
+# them. A failing command denies the whole call -- a `permissionDecision` of `deny` on
+# stdout, with the reason -- and nothing runs.
+#
+# Every check is an allowlist, and options match exactly. A program is allowed by name, and
+# where any option of its could write a file, change a ref or run a program, each option word
+# it is given has to be on that program's list in the code below. An unlisted option is
+# denied; so is any abbreviation of a listed one, since git, sort and their kin accept
+# abbreviations and the lists name only the full spelling; and so is a separate value that
+# starts with a dash, unless it is attached (`--sort=-committerdate`, `-L10,20`) or comes
+# after `--`. A listed long option takes a `=value`; one that takes a separate value consumes
+# the next word, which is then not an operand. git additionally takes any `--no-<option>`,
+# which only ever switches something off.
 #
 #   NAME=value  before a command: only pager, locale and terminal variables; a pager's value
 #               must be cat, less, more, true or false
-#   git    diff log show grep rev-parse blame ls-files ls-tree ls-remote cat-file merge-base
+#   git    diff log show rev-parse blame grep ls-files ls-tree ls-remote cat-file merge-base
 #          rev-list status describe shortlog name-rev for-each-ref show-ref count-objects
-#          check-ignore; `fetch` without a refspec destination, --stdin, or a forcing,
-#          pruning or upstream flag; `symbolic-ref` with one ref; `worktree list`;
-#          `remote` with -v, show or get-url; `branch` and `tag` in their listing forms;
-#          `config` only in a read form: --get, --get-all, --get-regexp, --list, -l, or the
-#          `get` and `list` subcommands. Global `-c`
-#          only for pager, color, abbreviation and locale keys, with the pager values above.
-#          Never --output, --ext-diff, --open-files-in-pager (-O), --upload-pack, --exec-path
-#          or --config-env
+#          check-ignore fetch symbolic-ref, `worktree list`, `remote` on its own or with -v,
+#          show or get-url, and the listing forms of branch, tag and config -- each with the
+#          options `check_git` lists for it. `fetch` also refuses any refspec with a
+#          destination or a `+`; `branch` and `tag` take an operand only with a listing
+#          option; `symbolic-ref` takes at most one ref; `config` needs a --get*, --list or
+#          -l option, or the `get` or `list` subcommand. Before the subcommand: -C, -c with
+#          pager, color, abbreviation and locale keys (pager values as above), --git-dir,
+#          --work-tree, --namespace, --no-pager, -P, -p, --literal-pathspecs,
+#          --no-optional-locks, --no-replace-objects, --bare
 #   gh     pr list|view|checks|diff|status; issue list|view; repo view; run list|view;
-#          release list|view; auth status; api with no method other than GET and no body
-#   find   without -delete, -exec, -execdir, -ok, -okdir, -fls or -fprint*
+#          release list|view; auth status; api with no method other than GET and no body.
+#          Never -w / --web, which opens a browser
+#   find   with its tests and the actions that only print: never -delete, -exec, -execdir,
+#          -ok, -okdir, -fls, -fprint, -fprint0 or -fprintf
+#   sort   never -o, --output, --compress-program, -T or --temporary-directory
+#   uniq   with at most one operand;  rg  never --pre, --pre-glob or --hostname-bin
+#   date   in its printing forms, never -s or --set
 #   never  sed, awk, curl, wget or file: each hides write or exec modes in its program,
-#          format or options, and the agents have Read, Grep and WebFetch for what those did.
-#          A denied long option matches any abbreviation of it, since git, sort and their
-#          kin accept one
+#          format or options, and the agents have Read, Grep and WebFetch for what those did
+#   and    ls cat head tail wc grep egrep fgrep tr cut jq diff comm column nl echo printf
+#          true false test [ basename dirname realpath readlink pwd which type stat du cd,
+#          with any options: none of theirs writes a file or runs a program
 #   and every command named bare or under /usr/bin, /bin, /usr/local/bin or
 #          /opt/homebrew/bin: `./tools/git` or `node_modules/.bin/cat` is denied, since a
 #          repository under review can ship a binary by any name
-#   sort   without -o or --compress-program;  uniq  with at most one operand;  rg  without
-#          --pre or --hostname-bin
-#   and    ls cat head tail wc grep egrep fgrep tr cut jq diff comm column nl echo printf
-#          true false test [ date basename dirname realpath readlink pwd which type stat
-#          du cd
 #
-# Short options are read as clusters: the run of letters after a lone dash is checked for a
-# forbidden letter, so `git branch -rd` is `-d` and `gh api -fbody=x` is `-f`. The price is
-# that a harmless attached value which happens to contain such a letter is denied too.
+# Short options are read as clusters: `-avv` is `-a -v -v`, and a letter that takes a value
+# takes the rest of its word (`-n5`, `-L10,20`) or, with nothing attached, the next word.
 #
 # What it cannot see: a command the repository's own git configuration runs (a textconv
 # filter, core.fsmonitor set in .git/config) -- that is the human's checkout, not the
@@ -158,53 +168,66 @@ read_commands() {
     }'
 }
 
-nonflags() { # words... -> count of words that are not flags; `--` ends the flags
-  local n=0 w flags_done=false
-  for w in "$@"; do
-    if $flags_done; then n=$((n + 1)); continue; fi
-    case $w in --) flags_done=true ;; -*) ;; *) n=$((n + 1)) ;; esac
+# ----------------------------------------------------------------- option lists
+# walk_opts reads one program's words against its option lists and leaves the operands in
+# OPERANDS and every option it saw, normalized (`-a`, `--list`), space-separated in SEEN.
+# The lists are strings: FLAGS and VALUES hold short-option letters, without and with a
+# value; OPTIONAL holds letters whose value is only ever attached (`-M90%`); LONGS and
+# LONGVALS hold long-option names without their dashes, without and with a separate value.
+# A listed long option takes `=value` either way. DIGITS allows `-<number>` (`git log -3`),
+# NEGATE allows any `--no-<name>`, which only ever switches something off, and NUMERIC
+# allows a bare `-<number>...` word as a value (`find -mtime -1`); each is `yes` or `no`.
+# `--` ends the options. Anything else that starts with a dash is denied: an unlisted
+# option, any abbreviation of a listed one, a separate value that starts with a dash.
+FLAGS="" VALUES="" OPTIONAL="" LONGS="" LONGVALS="" DIGITS=no NEGATE=no NUMERIC=no
+OPERANDS=()
+SEEN=""
+lists() { # flags values optional longs longvals [digits]
+  FLAGS=$1 VALUES=$2 OPTIONAL=$3 LONGS=${4//$'\n'/ } LONGVALS=${5//$'\n'/ } DIGITS=${6:-no}
+}
+walk_opts() { # label words...
+  local label=$1; shift
+  local w c run name need_value=""
+  OPERANDS=(); SEEN=""
+  while [ $# -gt 0 ]; do
+    w=$1; shift
+    if [ -n "$need_value" ]; then need_value=""; continue; fi
+    case $w in
+      --) OPERANDS+=("$@"); return 0 ;;
+      --*)
+        name=${w#--}
+        case $name in *=*) name=${name%%=*} ;; esac
+        [ -n "$name" ] || deny "\`$label $w\` is not an option"
+        case " $LONGS " in *" $name "*) SEEN="$SEEN --$name"; continue ;; esac
+        case " $LONGVALS " in
+          *" $name "*) SEEN="$SEEN --$name"; case $w in *=*) ;; *) need_value=1 ;; esac; continue ;;
+        esac
+        if [ "$NEGATE" = yes ]; then case $name in no-?*) SEEN="$SEEN --$name"; continue ;; esac; fi
+        deny "\`$label --$name\` is not on the read-only allowlist of options" ;;
+      -?*)
+        run=${w#-}
+        case $run in
+          [0-9]*)
+            if [ "$DIGITS" = yes ] && [ -z "${run//[0-9]/}" ]; then SEEN="$SEEN -$run"; continue; fi
+            if [ "$NUMERIC" = yes ]; then OPERANDS+=("$w"); continue; fi
+            deny "\`$label $w\` is not on the read-only allowlist of options" ;;
+        esac
+        while [ -n "$run" ]; do
+          c=${run:0:1}; run=${run:1}
+          case $FLAGS in *"$c"*) SEEN="$SEEN -$c"; continue ;; esac
+          case $VALUES in *"$c"*) SEEN="$SEEN -$c"; [ -n "$run" ] || need_value=1; break ;; esac
+          case $OPTIONAL in *"$c"*) SEEN="$SEEN -$c"; break ;; esac
+          deny "\`$label -$c\` is not on the read-only allowlist of options"
+        done ;;
+      *) OPERANDS+=("$w") ;;
+    esac
   done
-  printf '%s\n' "$n"
+  [ -z "$need_value" ] || deny "\`$label\` ends with an option that needs a value"
+  return 0
 }
 
-has_flag() { # pattern words... -> 0 when a word matches the glob pattern
-  local pat=$1 w; shift
-  for w in "$@"; do
-    # shellcheck disable=SC2254
-    case $w in $pat) return 0 ;; esac
-  done
-  return 1
-}
-
-# Short options cluster (`-sSo`) and take attached values (`-XPOST`, `-fbody=x`), so a flag
-# is never just a word. cluster_has looks at the run of letters after a lone dash and says
-# whether any of the given letters is in it; a caller that allows one attached form (`-XGET`)
-# checks that word first and skips it.
-cluster_has() { # letters words... -> 0 when a short-option word carries one of the letters
-  local letters=$1 w run; shift
-  for w in "$@"; do
-    case $w in --*|-) continue ;; -*) ;; *) continue ;; esac
-    run=${w#-}; run=${run%%[^A-Za-z]*}
-    # shellcheck disable=SC2254
-    case $run in *[$letters]*) return 0 ;; esac
-  done
-  return 1
-}
-
-# git, sort and other getopt_long users accept any unambiguous abbreviation of a long option,
-# so `--outp=f` and even `--o f` are `--output`. A denied long option therefore matches a
-# word that it begins with (the abbreviation, down to one letter) as well as a word that
-# begins with it (the option with a suffix or a value).
-long_opt_hit() { # --option words... -> 0 when a word abbreviates or extends the option
-  local full=$1 w t; shift
-  for w in "$@"; do
-    case $w in --?*) ;; *) continue ;; esac
-    t=${w%%=*}
-    case $t in "$full"*) return 0 ;; esac
-    [ ${#t} -ge 3 ] || continue   # `--d` is an abbreviation; a bare `--` is not
-    case $full in "$t"*) return 0 ;; esac
-  done
-  return 1
+seen() { # option -> 0 when walk_opts saw it
+  case " $SEEN " in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
 
 pager_value_ok() { # value -> 0 when it is a pager git or gh may run
@@ -233,6 +256,41 @@ check_git_config() { # key=value from -c
   esac
 }
 
+# The diff options, shared by every subcommand that can print a patch. Not --output, which
+# writes a file, --ext-diff, which runs the configured external diff, --show-signature, which
+# runs gpg, or -O / --open-files-in-pager.
+DIFF_FLAGS='pusabwWzRtrDc'
+DIFF_VALUES='UlISG'
+DIFF_OPTIONAL='MCBX'
+DIFF_LONGS='stat numstat shortstat name-only name-status summary patch no-patch raw patch-with-raw
+  patch-with-stat compact-summary dirstat dirstat-by-file cumulative unified function-context
+  minimal patience histogram indent-heuristic full-index abbrev binary text color color-moved
+  color-moved-ws color-words word-diff ignore-all-space ignore-space-change ignore-space-at-eol
+  ignore-cr-at-eol ignore-blank-lines find-renames find-copies find-copies-harder break-rewrites
+  irreversible-delete pickaxe-all pickaxe-regex relative default-prefix submodule ignore-submodules
+  textconv exit-code quiet check stat-width stat-name-width stat-count stat-graph-width
+  rename-empty ita-invisible-in-index combined-all-paths cc dd diff-merges remerge-diff'
+DIFF_LONGVALS='diff-algorithm anchored inter-hunk-context word-diff-regex ignore-matching-lines
+  diff-filter find-object src-prefix dst-prefix line-prefix ws-error-highlight rotate-to skip-to
+  output-indicator-new output-indicator-old output-indicator-context'
+# The revision-walking options of log, show, rev-list and shortlog.
+LOG_FLAGS='iEFPgmct'
+LOG_VALUES='nL'
+LOG_LONGS='all-match invert-grep regexp-ignore-case basic-regexp extended-regexp fixed-strings
+  perl-regexp merges no-merges first-parent exclude-first-parent-only not all branches tags
+  remotes exclude-hidden reflog alternate-refs single-worktree ignore-missing cherry-mark
+  cherry-pick left-only right-only cherry walk-reflogs merge boundary simplify-by-decoration
+  show-pulls full-history dense sparse simplify-merges ancestry-path date-order
+  author-date-order topo-order reverse no-walk do-walk abbrev-commit no-abbrev-commit oneline
+  expand-tabs no-expand-tabs notes no-notes show-notes standard-notes relative-date parents
+  children left-right graph count objects objects-edge indexed-objects unpacked
+  in-commit-order object-names no-object-names filter-print-omitted exclude-promisor-objects
+  disk-usage use-bitmap-index progress header timestamp decorate clear-decorations source
+  use-mailmap mailmap follow log-size full-diff bisect stdin since-as-filter'
+LOG_LONGVALS='max-count skip since after until before author committer grep grep-reflog
+  min-parents max-parents glob exclude pretty format encoding date show-linear-break
+  decorate-refs decorate-refs-exclude filter missing max-age min-age default'
+
 check_git() { # words after `git`
   local -a w=("$@")
   local sub="" i=0
@@ -247,118 +305,151 @@ check_git() { # words after `git`
     esac
   done
   local -a rest=("${w[@]:$i}")
-  long_opt_hit --output "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --output\` writes a file"
-  long_opt_hit --ext-diff "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --ext-diff\` runs the configured external diff"
-  long_opt_hit --open-files-in-pager "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --open-files-in-pager\` runs a program"
-  long_opt_hit --upload-pack "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --upload-pack\` runs a program"
-  long_opt_hit --exec "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --exec\` runs a program"
-  long_opt_hit --config-env "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --config-env\` injects configuration"
+  NEGATE=yes
   case $sub in
-    diff|log|show|rev-parse|blame|ls-files|ls-tree|ls-remote|cat-file|merge-base|rev-list|status|describe|shortlog|name-rev|for-each-ref|show-ref|count-objects|check-ignore) ;;
-    fetch)
-      # A fetch updates remote-tracking refs, which is fine; a refspec with a destination, or
-      # a forcing or pruning flag, writes or deletes the checkout's own branches.
-      if cluster_has fpPu "${rest[@]+"${rest[@]}"}" || long_opt_hit --force "${rest[@]+"${rest[@]}"}" \
-         || long_opt_hit --prune "${rest[@]+"${rest[@]}"}" || long_opt_hit --update-head-ok "${rest[@]+"${rest[@]}"}" \
-         || long_opt_hit --set-upstream "${rest[@]+"${rest[@]}"}" || long_opt_hit --refmap "${rest[@]+"${rest[@]}"}"; then
-        deny "\`git fetch\` with a flag that forces, prunes or rewrites refs"
-      fi
-      long_opt_hit --stdin "${rest[@]+"${rest[@]}"}" && deny "\`git fetch --stdin\` reads refspecs the guard cannot see"
-      local r
-      for r in "${rest[@]+"${rest[@]}"}"; do
-        case $r in -*) ;; *:*|+*) deny "\`git fetch\` with a refspec destination writes a local ref; fetch the remote and read origin/<branch>" ;; esac
-      done ;;
+    diff)
+      lists "$DIFF_FLAGS" "$DIFF_VALUES" "$DIFF_OPTIONAL" "$DIFF_LONGS base ours theirs cached staged merge-base no-index" "$DIFF_LONGVALS" yes ;;
+    log|show|rev-list)
+      lists "$DIFF_FLAGS$LOG_FLAGS" "$DIFF_VALUES$LOG_VALUES" "$DIFF_OPTIONAL" "$DIFF_LONGS $LOG_LONGS" "$DIFF_LONGVALS $LOG_LONGVALS" yes ;;
+    shortlog)
+      lists "${LOG_FLAGS}sne" "$LOG_VALUES" "" "$LOG_LONGS summary numbered email committer group" "$LOG_LONGVALS" yes ;;
+    blame)
+      lists 'btsenplcfw' 'LS' 'MC' 'root show-stats porcelain line-porcelain incremental progress color-lines color-by-age minimal show-email show-name show-number first-parent abbrev' 'contents date ignore-rev ignore-revs-file since encoding reverse' ;;
     grep)
-      cluster_has O "${rest[@]+"${rest[@]}"}" && deny "\`git grep -O\` runs a program" ;;
+      lists 'aiIrwvhHEGPFnlLzocpqW' 'efABCm' '' 'cached no-index untracked no-exclude-standard exclude-standard recurse-submodules text ignore-case textconv no-textconv recursive word-regexp invert-match full-name extended-regexp basic-regexp perl-regexp fixed-strings line-number column files-with-matches name-only files-without-match null only-matching count color no-color break heading show-function function-context and or not all-match quiet' 'max-depth after-context before-context context threads max-count' ;;
+    status)
+      lists 'sbvz' '' 'u' 'short branch show-stash porcelain long verbose untracked-files ignore-submodules ignored column no-column ahead-behind renames no-renames find-renames no-lock-index' '' ;;
+    rev-parse)
+      lists 'q' '' '' 'verify short abbrev-ref symbolic symbolic-full-name quiet revs-only no-revs flags no-flags sq sq-quote not all branches tags remotes glob exclude show-toplevel show-prefix show-cdup show-superproject-working-tree git-dir git-common-dir is-inside-git-dir is-inside-work-tree is-bare-repository is-shallow-repository absolute-git-dir shared-index-path show-object-format show-ref-format local-env-vars since until after before' 'default prefix disambiguate git-path resolve-git-dir path-format' ;;
+    ls-files)
+      lists 'cdoisztvfmku' 'xX' '' 'cached deleted others ignored stage directory no-empty-directory unmerged killed modified exclude-standard error-unmatch full-name recurse-submodules abbrev debug deduplicate eol sparse' 'exclude exclude-from exclude-per-directory with-tree format' ;;
+    ls-tree)
+      lists 'drtlz' '' '' 'long name-only name-status object-only full-name full-tree abbrev' 'format' ;;
+    ls-remote)
+      lists 'htq' '' '' 'heads tags refs quiet exit-code get-url symref branches' 'sort' ;;
+    cat-file)
+      lists 'tsepz' '' '' 'textconv filters batch batch-check batch-command batch-all-objects buffer follow-symlinks unordered allow-unknown-type' 'path' ;;
+    merge-base)
+      lists 'a' '' '' 'all octopus independent is-ancestor fork-point' '' ;;
+    describe)
+      lists '' '' '' 'dirty broken all tags contains abbrev exact-match debug long always first-parent' 'candidates match exclude' ;;
+    name-rev)
+      lists '' '' '' 'tags all annotate-stdin stdin name-only no-undefined always' 'refs exclude' ;;
+    for-each-ref)
+      lists '' '' '' 'shell perl python tcl color ignore-case omit-empty include-root-refs stdin' 'count sort format points-at merged no-merged contains no-contains exclude' ;;
+    show-ref)
+      lists 'dsq' '' '' 'head branches tags dereference hash verify exists abbrev quiet exclude-existing' '' ;;
+    count-objects)
+      lists 'vH' '' '' 'verbose human-readable' '' ;;
+    check-ignore)
+      lists 'qvzn' '' '' 'quiet verbose stdin non-matching no-index' '' ;;
+    fetch)
+      # A fetch updates remote-tracking refs, which is fine. Not a forcing, pruning or upstream
+      # option, not --stdin, --upload-pack or anything that runs maintenance; and no refspec with
+      # a destination or a `+`, which writes or deletes the checkout's own branches.
+      lists 'qvtnk46' 'j' '' 'quiet verbose all tags dry-run no-tags recurse-submodules no-recurse-submodules progress no-progress atomic porcelain ipv4 ipv6 keep multiple prefetch' 'depth deepen shallow-since shallow-exclude jobs negotiation-tip filter' ;;
     symbolic-ref)
-      if cluster_has dm "${rest[@]+"${rest[@]}"}" || long_opt_hit --delete "${rest[@]+"${rest[@]}"}"; then
-        deny "\`git symbolic-ref -d\` deletes a ref"
-      fi
-      [ "$(nonflags "${rest[@]+"${rest[@]}"}")" -le 1 ] || deny "\`git symbolic-ref\` with two refs writes one" ;;
+      lists 'q' '' '' 'quiet short recurse no-recurse' '' ;;
     worktree)
-      [ "${rest[0]:-}" = list ] || deny "\`git worktree ${rest[0]:-}\` changes worktrees; only \`list\` is allowed" ;;
+      [ "${rest[0]:-}" = list ] || deny "\`git worktree ${rest[0]:-}\` changes worktrees; only \`list\` is allowed"
+      rest=("${rest[@]:1}")
+      lists 'vz' '' '' 'porcelain verbose' 'expire' ;;
     remote)
-      case ${rest[0]:-} in ''|-v|--verbose|show|get-url) ;; *) deny "\`git remote ${rest[0]}\` changes remotes" ;; esac ;;
+      case ${rest[0]:-} in
+        ''|-v|--verbose) [ ${#rest[@]} -le 1 ] || deny "\`git remote\` lists remotes only on its own or with -v"; return 0 ;;
+        show) rest=("${rest[@]:1}"); lists 'n' '' '' '' '' ;;
+        get-url) rest=("${rest[@]:1}"); lists '' '' '' 'push all' '' ;;
+        *) deny "\`git remote ${rest[0]}\` changes remotes" ;;
+      esac ;;
     branch)
-      if cluster_has dDmMcCuf "${rest[@]+"${rest[@]}"}" \
-         || long_opt_hit --delete "${rest[@]+"${rest[@]}"}" || long_opt_hit --move "${rest[@]+"${rest[@]}"}" \
-         || long_opt_hit --copy "${rest[@]+"${rest[@]}"}" || long_opt_hit --force "${rest[@]+"${rest[@]}"}" \
-         || long_opt_hit --set-upstream-to "${rest[@]+"${rest[@]}"}" || long_opt_hit --unset-upstream "${rest[@]+"${rest[@]}"}" \
-         || long_opt_hit --edit-description "${rest[@]+"${rest[@]}"}" || long_opt_hit --track "${rest[@]+"${rest[@]}"}" \
-         || long_opt_hit --no-track "${rest[@]+"${rest[@]}"}"; then
-        deny "\`git branch\` with a flag that creates, moves or deletes a branch"
-      fi
-      # -v is verbosity, not list mode: `git branch -v new` creates `new`.
-      if [ "$(nonflags "${rest[@]+"${rest[@]}"}")" -gt 0 ] \
-         && ! { cluster_has arl "${rest[@]+"${rest[@]}"}" || has_flag '--list' "${rest[@]+"${rest[@]}"}" \
-                || has_flag '--merged' "${rest[@]+"${rest[@]}"}" || has_flag '--no-merged' "${rest[@]+"${rest[@]}"}" \
-                || has_flag '--contains' "${rest[@]+"${rest[@]}"}" || has_flag '--no-contains' "${rest[@]+"${rest[@]}"}" \
-                || has_flag '--points-at' "${rest[@]+"${rest[@]}"}" || has_flag '--show-current' "${rest[@]+"${rest[@]}"}"; }; then
-        deny "\`git branch <name>\` creates a branch; list with -a, -r, --list, --merged, --contains or --points-at"
-      fi ;;
+      lists 'arvliq' '' '' 'all remotes verbose list merged no-merged contains no-contains points-at show-current sort format color no-color ignore-case column no-column abbrev no-abbrev quiet' '' ;;
     tag)
-      if cluster_has dasfFmu "${rest[@]+"${rest[@]}"}" \
-         || long_opt_hit --delete "${rest[@]+"${rest[@]}"}" || long_opt_hit --annotate "${rest[@]+"${rest[@]}"}" \
-         || long_opt_hit --sign "${rest[@]+"${rest[@]}"}" || long_opt_hit --force "${rest[@]+"${rest[@]}"}" \
-         || long_opt_hit --message "${rest[@]+"${rest[@]}"}" || long_opt_hit --file "${rest[@]+"${rest[@]}"}"; then
-        deny "\`git tag\` with a flag that creates or deletes a tag"
-      fi
-      if [ "$(nonflags "${rest[@]+"${rest[@]}"}")" -gt 0 ] \
-         && ! { cluster_has l "${rest[@]+"${rest[@]}"}" || has_flag '--list' "${rest[@]+"${rest[@]}"}" \
-                || has_flag '--contains' "${rest[@]+"${rest[@]}"}" || has_flag '--no-contains' "${rest[@]+"${rest[@]}"}" \
-                || has_flag '--points-at' "${rest[@]+"${rest[@]}"}" || has_flag '--merged' "${rest[@]+"${rest[@]}"}" \
-                || has_flag '--no-merged' "${rest[@]+"${rest[@]}"}"; }; then
-        deny "\`git tag <name>\` creates a tag; list with -l, --list, --contains or --points-at"
-      fi ;;
+      lists 'li' '' 'n' 'list contains no-contains merged no-merged points-at sort format color ignore-case column no-column' '' ;;
     config)
-      # Read forms only: a --get*/--list flag, or `get`/`list` as the subcommand itself.
-      if long_opt_hit --unset "${rest[@]+"${rest[@]}"}" || long_opt_hit --add "${rest[@]+"${rest[@]}"}" \
-         || long_opt_hit --replace-all "${rest[@]+"${rest[@]}"}" || long_opt_hit --edit "${rest[@]+"${rest[@]}"}" \
-         || cluster_has e "${rest[@]+"${rest[@]}"}" || long_opt_hit --rename-section "${rest[@]+"${rest[@]}"}" \
-         || long_opt_hit --remove-section "${rest[@]+"${rest[@]}"}"; then
-        deny "\`git config\` in a writing form"
-      fi
-      local first="" r
-      for r in "${rest[@]+"${rest[@]}"}"; do case $r in -*) ;; *) first=$r; break ;; esac; done
-      case $first in
-        set|unset|edit|rename-section|remove-section|add|replace-all) deny "\`git config $first\` writes the configuration" ;;
-      esac
-      has_flag '--get' "${rest[@]+"${rest[@]}"}" || has_flag '--get-all' "${rest[@]+"${rest[@]}"}" \
-        || has_flag '--get-regexp' "${rest[@]+"${rest[@]}"}" || has_flag '--list' "${rest[@]+"${rest[@]}"}" \
-        || has_flag '-l' "${rest[@]+"${rest[@]}"}" || [ "$first" = get ] || [ "$first" = list ] \
-        || deny "\`git config\` only in a read form: --get, --get-all, --get-regexp, --list, -l, or the get and list subcommands" ;;
+      lists 'lz' 'f' '' 'get get-all get-regexp get-urlmatch get-color get-colorbool list show-origin show-scope name-only null includes no-includes global system local worktree bool int bool-or-int path expiry-date fixed-value all regexp value' 'file blob default type' ;;
     '') deny "\`git\` with no subcommand" ;;
     *) deny "\`git $sub\` is not on the read-only allowlist" ;;
   esac
+  walk_opts "git $sub" "${rest[@]+"${rest[@]}"}"
+  case $sub in
+    fetch)
+      local r
+      for r in "${OPERANDS[@]+"${OPERANDS[@]}"}"; do
+        case $r in *:*|+*) deny "\`git fetch\` with a refspec destination writes a local ref; fetch the remote and read origin/<branch>" ;; esac
+      done ;;
+    symbolic-ref)
+      [ ${#OPERANDS[@]} -le 1 ] || deny "\`git symbolic-ref\` with two refs writes one" ;;
+    branch)
+      # -v is verbosity, not list mode: `git branch -v new` creates `new`.
+      if [ ${#OPERANDS[@]} -gt 0 ] && ! { seen -a || seen -r || seen -l || seen --all || seen --remotes || seen --list \
+           || seen --merged || seen --no-merged || seen --contains || seen --no-contains || seen --points-at || seen --show-current; }; then
+        deny "\`git branch <name>\` creates a branch; list with -a, -r, --list, --merged, --contains or --points-at"
+      fi ;;
+    tag)
+      if [ ${#OPERANDS[@]} -gt 0 ] && ! { seen -l || seen -n || seen --list || seen --contains || seen --no-contains \
+           || seen --merged || seen --no-merged || seen --points-at; }; then
+        deny "\`git tag <name>\` creates a tag; list with -l, --list, --contains or --points-at"
+      fi ;;
+    config)
+      # A read form is required: `git config <key>` alone reads, but `git config <key> <value>`
+      # writes, and the two differ only in operand count.
+      seen --get || seen --get-all || seen --get-regexp || seen --get-urlmatch || seen --get-color || seen --get-colorbool \
+        || seen --list || seen -l || [ "${OPERANDS[0]:-}" = get ] || [ "${OPERANDS[0]:-}" = list ] \
+        || deny "\`git config\` only in a read form: --get, --get-all, --get-regexp, --list, -l, or the get and list subcommands" ;;
+  esac
+  return 0
 }
 
 check_gh() { # words after `gh`
   local sub=${1:-} act=${2:-}
+  local -a rest=()
+  [ $# -ge 2 ] && rest=("${@:3}")
+  NEGATE=no
   case "$sub $act" in
-    'pr list'|'pr view'|'pr checks'|'pr diff'|'pr status'|'issue list'|'issue view'|'repo view'|'run list'|'run view'|'release list'|'release view'|'auth status') return 0 ;;
+    'pr list'|'pr view'|'pr checks'|'pr diff'|'pr status'|'issue list'|'issue view'|'repo view'|'run list'|'run view'|'release list'|'release view'|'auth status')
+      # Not -w / --web, which opens a browser.
+      lists 'vdi' 'RLsaABHlSqtjbeumc' '' 'draft comments required fail-fast watch log log-failed exit-status verbose patch name-only help' 'json jq template limit state assignee author base head label search app milestone mention order sort interval job branch workflow event status user commit repo color'
+      walk_opts "gh $sub $act" "${rest[@]+"${rest[@]}"}"
+      return 0 ;;
+    'api '*)
+      shift
+      local -a w=("$@")
+      local i=0
+      while [ $i -lt ${#w[@]} ]; do
+        case ${w[$i]} in
+          -X|--method)
+            case ${w[$((i + 1))]:-} in GET|get) ;; *) deny "\`gh api\` with a method other than GET" ;; esac
+            i=$((i + 2)); continue ;;
+          -XGET|-Xget|--method=GET|--method=get) ;;
+          --method=*|-X*|-[!-]*X*) deny "\`gh api\` with a method other than GET" ;;
+        esac
+        i=$((i + 1))
+      done
+      # Not -f, -F, --field, --raw-field or --input, which send a body.
+      lists 'i' 'XHqtp' '' 'paginate slurp include silent verbose help' 'method header jq template hostname cache preview'
+      walk_opts "gh api" "${w[@]+"${w[@]}"}"
+      return 0 ;;
   esac
-  if [ "$sub" = api ]; then
-    shift
-    local -a w=("$@") others=()
-    local i=0
-    while [ $i -lt ${#w[@]} ]; do
-      case ${w[$i]} in
-        -X|--method)
-          case ${w[$((i + 1))]:-} in GET|get) ;; *) deny "\`gh api\` with a method other than GET" ;; esac
-          i=$((i + 2)); continue ;;
-        -XGET|-Xget|--method=GET|--method=get) ;;
-        --method=*) deny "\`gh api\` with a method other than GET" ;;
-        --field|--raw-field|--input|--field=*|--raw-field=*|--input=*)
-          deny "\`gh api\` with a request body" ;;
-        *) others+=("${w[$i]}") ;;
-      esac
-      i=$((i + 1))
-    done
-    cluster_has X "${others[@]+"${others[@]}"}" && deny "\`gh api\` with a method other than GET"
-    cluster_has fF "${others[@]+"${others[@]}"}" && deny "\`gh api\` with a request body"
-    return 0
-  fi
   deny "\`gh $sub $act\` is not on the read-only allowlist"
+}
+
+# find's tests and the actions that only print. Not -delete, -exec, -execdir, -ok, -okdir,
+# -fls, -fprint, -fprint0 or -fprintf. A numeric word (`-mtime -1`) is a value.
+FIND_WORDS='-name -iname -path -ipath -wholename -iwholename -regex -iregex -lname -ilname -type
+  -xtype -maxdepth -mindepth -depth -mtime -mmin -atime -amin -ctime -cmin -newer -anewer -cnewer
+  -newermt -newerct -newerat -newermm -newerBm -newerBt -size -empty -not -o -or -a -and -prune
+  -print -print0 -printf -ls -true -false -perm -user -group -uid -gid -nouser -nogroup -links
+  -inum -samefile -readable -writable -executable -xdev -mount -follow -L -H -P -E -s -x -d -f
+  -quit -regextype -daystart -noleaf -ignore_readdir_race -noignore_readdir_race -fstype -used
+  -flags -acl -Bmin -Btime -Bnewer -mnewer'
+check_find() { # words after `find`
+  local w
+  for w in "$@"; do
+    case $w in
+      -[0-9]*|+[0-9]*) ;;
+      -*) case " ${FIND_WORDS//$'\n'/ } " in *" $w "*) ;; *) deny "\`find $w\` is not on the read-only allowlist of find tests and actions" ;; esac ;;
+    esac
+  done
 }
 
 check_segment() { # the words of one simple command, unquoted
@@ -381,27 +472,30 @@ check_segment() { # the words of one simple command, unquoted
     */*) deny "\`$prog\` names a program by path; use the bare name, or a path under /usr/bin, /bin, /usr/local/bin or /opt/homebrew/bin" ;;
   esac
   local -a rest=("${words[@]:1}")
+  NEGATE=no NUMERIC=no
   case $prog in
     git) check_git "${rest[@]+"${rest[@]}"}" ;;
     gh) check_gh "${rest[@]+"${rest[@]}"}" ;;
     sed|awk|gawk|mawk|nawk|curl|wget|file)
       deny "\`$prog\` is not allowed for a read-only agent; read files with the Read and Grep tools and pages with WebFetch" ;;
-    find)
-      has_flag '-delete' "${rest[@]+"${rest[@]}"}" && deny "\`find -delete\` deletes"
-      has_flag '-exec*' "${rest[@]+"${rest[@]}"}" && deny "\`find -exec\` runs arbitrary commands"
-      has_flag '-ok*' "${rest[@]+"${rest[@]}"}" && deny "\`find -ok\` runs arbitrary commands"
-      has_flag '-fprint*' "${rest[@]+"${rest[@]}"}" && deny "\`find -fprint\` writes a file"
-      has_flag '-fls' "${rest[@]+"${rest[@]}"}" && deny "\`find -fls\` writes a file" ;;
+    find) check_find "${rest[@]+"${rest[@]}"}" ;;
     sort)
-      cluster_has o "${rest[@]+"${rest[@]}"}" && deny "\`sort -o\` writes a file"
-      long_opt_hit --output "${rest[@]+"${rest[@]}"}" && deny "\`sort --output\` writes a file"
-      long_opt_hit --compress-program "${rest[@]+"${rest[@]}"}" && deny "\`sort --compress-program\` runs a program" ;;
+      # Not -o / --output, --compress-program, or -T / --temporary-directory.
+      lists 'bdfghiMnrRsuVzcCm' 'ktS' '' 'ignore-leading-blanks dictionary-order ignore-case general-numeric-sort human-numeric-sort ignore-nonprinting month-sort numeric-sort random-sort reverse version-sort stable unique zero-terminated check merge debug help version' 'key field-separator buffer-size batch-size parallel files0-from'
+      walk_opts sort "${rest[@]+"${rest[@]}"}" ;;
     uniq)
-      [ "$(nonflags "${rest[@]+"${rest[@]}"}")" -le 1 ] || deny "\`uniq\` with two operands writes the second" ;;
+      lists 'cdDiuz' 'fsw' '' 'count repeated all-repeated ignore-case unique zero-terminated group help version' 'skip-fields skip-chars check-chars'
+      walk_opts uniq "${rest[@]+"${rest[@]}"}"
+      [ ${#OPERANDS[@]} -le 1 ] || deny "\`uniq\` with two operands writes the second" ;;
     rg)
-      has_flag '--pre*' "${rest[@]+"${rest[@]}"}" && deny "\`rg --pre\` runs a program on every file"
-      long_opt_hit --hostname-bin "${rest[@]+"${rest[@]}"}" && deny "\`rg --hostname-bin\` runs a program" ;;
-    ls|cat|head|tail|wc|grep|egrep|fgrep|tr|cut|jq|diff|comm|column|nl|echo|printf|true|false|test|'['|date|basename|dirname|realpath|readlink|pwd|which|type|stat|du|cd) ;;
+      # Not --pre, --pre-glob or --hostname-bin, which run a program.
+      lists 'nNiSsvwxlcHhoqFPUzaLu0' 'efgtTmMrdABCjE' '' 'line-number no-line-number ignore-case smart-case case-sensitive invert-match word-regexp line-regexp files-with-matches files-without-match count count-matches no-filename with-filename only-matching quiet fixed-strings pcre2 multiline multiline-dotall search-zip text follow type-list max-count-only no-max-count include-zero color heading no-heading json vimgrep column no-column byte-offset null null-data files hidden no-ignore no-ignore-vcs no-ignore-global no-ignore-parent no-ignore-dot no-ignore-files no-messages no-config debug trace stats trim passthru one-file-system line-buffered block-buffered unrestricted crlf mmap no-mmap no-unicode no-require-git no-search-zip sort-files auto-hybrid-regex no-pcre2-unicode no-context-separator version help' 'glob iglob type type-not type-add max-count max-columns max-depth max-filesize after-context before-context context context-separator colors encoding engine regexp file replace sort sortr threads ignore-file dfa-size-limit regex-size-limit field-context-separator field-match-separator path-separator'
+      walk_opts rg "${rest[@]+"${rest[@]}"}" ;;
+    date)
+      # Printing forms only: not -s / --set.
+      lists 'uRj' 'dvrf' 'I' 'utc universal iso-8601 rfc-3339 rfc-email debug help version' 'date reference file'
+      walk_opts date "${rest[@]+"${rest[@]}"}" ;;
+    ls|cat|head|tail|wc|grep|egrep|fgrep|tr|cut|jq|diff|comm|column|nl|echo|printf|true|false|test|'['|basename|dirname|realpath|readlink|pwd|which|type|stat|du|cd) ;;
     *) deny "\`$prog\` is not on the read-only allowlist" ;;
   esac
   return 0
