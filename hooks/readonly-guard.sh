@@ -144,8 +144,11 @@ read_commands() {
       my $mseg = substr($m, $start, $i - $start);
       $start = $i + 1;
       next unless $seg =~ /\S/;
-      $seg =~ s/^\s*\(+//; $seg =~ s/\)+\s*$//;   # a subshell is its command
-      $mseg =~ s/^\s*\(+//; $mseg =~ s/\)+\s*$//;
+      # A subshell is its command. The parens to strip are the ones the masked text shows
+      # bare -- an escaped `\)` is QQ there -- and masking is length-preserving, so the same
+      # positions come off the raw text.
+      if ($mseg =~ /^(\s*\(+)/)  { my $n = length $1; substr($seg, 0, $n) = ""; substr($mseg, 0, $n) = "" }
+      if ($mseg =~ /(\)+\s*)$/)  { my $n = length $1; substr($seg, -$n) = "";  substr($mseg, -$n) = "" }
       # Any other parenthesis is a function definition, a case pattern or arithmetic --
       # grammar the checks do not read.
       if ($mseg =~ /[()]/) { print "\x1d\n"; next }
@@ -345,9 +348,10 @@ check_git() { # words after `git`
       lists 'qvzn' '' '' 'quiet verbose stdin non-matching no-index' '' ;;
     fetch)
       # A fetch updates remote-tracking refs, which is fine. Not a forcing, pruning or upstream
-      # option, not --stdin, --upload-pack or anything that runs maintenance; and no refspec with
-      # a destination or a `+`, which writes or deletes the checkout's own branches.
-      lists 'qvtnk46' 'j' '' 'quiet verbose all tags dry-run no-tags recurse-submodules no-recurse-submodules progress no-progress atomic porcelain ipv4 ipv6 keep multiple prefetch' 'depth deepen shallow-since shallow-exclude jobs negotiation-tip filter' ;;
+      # option, not --stdin, --upload-pack or anything that runs maintenance; not --depth,
+      # --deepen or --shallow-*, which turn the human's full clone into a shallow one; and no
+      # refspec with a destination or a `+`, which writes or deletes the checkout's own branches.
+      lists 'qvtnk46' 'j' '' 'quiet verbose all tags dry-run no-tags recurse-submodules no-recurse-submodules progress no-progress atomic porcelain ipv4 ipv6 keep multiple prefetch' 'jobs negotiation-tip filter' ;;
     symbolic-ref)
       lists 'q' '' '' 'quiet short recurse no-recurse' '' ;;
     worktree)
