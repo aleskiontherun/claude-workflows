@@ -24,8 +24,9 @@
 #   NAME=value  before a command: only pager, locale and terminal variables; a pager's value
 #               must be cat, less, more, true or false
 #   git    diff log show grep rev-parse blame ls-files ls-tree ls-remote cat-file merge-base
-#          rev-list status fetch describe shortlog name-rev for-each-ref show-ref
-#          count-objects check-ignore; `symbolic-ref` with one ref; `worktree list`;
+#          rev-list status describe shortlog name-rev for-each-ref show-ref count-objects
+#          check-ignore; `fetch` without a refspec destination or a forcing, pruning or
+#          upstream flag; `symbolic-ref` with one ref; `worktree list`;
 #          `remote` with -v, show or get-url; `branch` and `tag` in their listing forms;
 #          `config` only with --get, --get-all, --get-regexp, --list or -l. Global `-c`
 #          only for pager, color, abbreviation and locale keys, with the pager values above.
@@ -34,7 +35,8 @@
 #   gh     pr list|view|checks|diff|status; issue list|view; repo view; run list|view;
 #          release list|view; auth status; api with no method other than GET and no body
 #   curl   with no method other than GET or HEAD, no body, no output, config, trace,
-#          cookie, HSTS or Alt-Svc file (-o /dev/null is fine)
+#          cookie, HSTS or Alt-Svc file, no %output{} in --write-out and no @file
+#          argument (-o /dev/null is fine)
 #   find   without -delete, -exec, -execdir, -ok, -okdir, -fls or -fprint*
 #   sed    with -n, -E, -r and -e only, and a program made of addresses plus p d q = l n N D
 #          P h H g G x, s/// without the w or e flags, y///, and braces -- so no w, r, e, -i
@@ -206,7 +208,19 @@ check_git() { # words after `git`
   has_flag '--exec*' "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --exec\` runs a program"
   has_flag '--config-env*' "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --config-env\` injects configuration"
   case $sub in
-    diff|log|show|rev-parse|blame|ls-files|ls-tree|ls-remote|cat-file|merge-base|rev-list|status|fetch|describe|shortlog|name-rev|for-each-ref|show-ref|count-objects|check-ignore) ;;
+    diff|log|show|rev-parse|blame|ls-files|ls-tree|ls-remote|cat-file|merge-base|rev-list|status|describe|shortlog|name-rev|for-each-ref|show-ref|count-objects|check-ignore) ;;
+    fetch)
+      # A fetch updates remote-tracking refs, which is fine; a refspec with a destination, or
+      # a forcing or pruning flag, writes or deletes the checkout's own branches.
+      if cluster_has fpPu "${rest[@]+"${rest[@]}"}" || has_flag '--force' "${rest[@]+"${rest[@]}"}" \
+         || has_flag '--prune*' "${rest[@]+"${rest[@]}"}" || has_flag '--update-head-ok' "${rest[@]+"${rest[@]}"}" \
+         || has_flag '--set-upstream' "${rest[@]+"${rest[@]}"}" || has_flag '--refmap*' "${rest[@]+"${rest[@]}"}"; then
+        deny "\`git fetch\` with a flag that forces, prunes or rewrites refs"
+      fi
+      local r
+      for r in "${rest[@]+"${rest[@]}"}"; do
+        case $r in -*) ;; *:*|+*) deny "\`git fetch\` with a refspec destination writes a local ref; fetch the remote and read origin/<branch>" ;; esac
+      done ;;
     grep)
       cluster_has O "${rest[@]+"${rest[@]}"}" && deny "\`git grep -O\` runs a program" ;;
     symbolic-ref)
@@ -320,6 +334,14 @@ check_curl() { # words after `curl`
     esac
     i=$((i + 1))
   done
+  # --write-out can write a file through %output{...}, or read its format from a file.
+  local a
+  for a in "${w[@]+"${w[@]}"}"; do
+    case $a in
+      *'%output{'*) deny "\`curl --write-out\` with %output{} writes a file" ;;
+      @*|*=@*) deny "\`curl\` reading an argument from a file the guard cannot see" ;;
+    esac
+  done
   # The short forms, clustered or attached, once the allowed exact words above are out.
   cluster_has X "${others[@]+"${others[@]}"}" && deny "\`curl\` with a method other than GET or HEAD"
   cluster_has dFT "${others[@]+"${others[@]}"}" && deny "\`curl\` with a request body"
@@ -373,6 +395,7 @@ check_segment() { # the words of one simple command, unquoted
   # review cannot write to; `./tools/git` or `node_modules/.bin/cat` would be its code.
   local prog=${words[0]}
   case $prog in
+    */../*|*/..) deny "\`$prog\` climbs out of its directory with \`..\`" ;;
     /usr/bin/*|/bin/*|/usr/local/bin/*|/opt/homebrew/bin/*) prog=${prog##*/} ;;
     */*) deny "\`$prog\` names a program by path; use the bare name, or a path under /usr/bin, /bin, /usr/local/bin or /opt/homebrew/bin" ;;
   esac
