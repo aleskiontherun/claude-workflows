@@ -39,16 +39,18 @@
 #   gh     pr list|view|checks|diff|status; issue list|view; repo view; run list|view;
 #          release list|view; auth status; api with no method other than GET and no body
 #   find   without -delete, -exec, -execdir, -ok, -okdir, -fls or -fprint*
-#   never  sed, awk, curl or wget: each hides write or exec modes in its program or format
-#          text, and the agents have Read, Grep and WebFetch for what those did
+#   never  sed, awk, curl, wget or file: each hides write or exec modes in its program,
+#          format or options, and the agents have Read, Grep and WebFetch for what those did.
+#          A denied long option matches any abbreviation of it, since git, sort and their
+#          kin accept one
 #   and every command named bare or under /usr/bin, /bin, /usr/local/bin or
 #          /opt/homebrew/bin: `./tools/git` or `node_modules/.bin/cat` is denied, since a
 #          repository under review can ship a binary by any name
 #   sort   without -o or --compress-program;  uniq  with at most one operand;  rg  without
-#          --pre or --hostname-bin;  file  without -C or --compile
+#          --pre or --hostname-bin
 #   and    ls cat head tail wc grep egrep fgrep tr cut jq diff comm column nl echo printf
-#          true false test [ date basename dirname realpath readlink pwd which type file
-#          stat du cd
+#          true false test [ date basename dirname realpath readlink pwd which type stat
+#          du cd
 #
 # Short options are read as clusters: the run of letters after a lone dash is checked for a
 # forbidden letter, so `git branch -rd` is `-d` and `gh api -fbody=x` is `-f`. The price is
@@ -189,6 +191,22 @@ cluster_has() { # letters words... -> 0 when a short-option word carries one of 
   return 1
 }
 
+# git, sort and other getopt_long users accept any unambiguous abbreviation of a long option,
+# so `--outp=f` is `--output`. A denied long option therefore matches a word that it begins
+# with (the abbreviation, at least two letters) as well as a word that begins with it (the
+# option with a suffix or a value).
+long_opt_hit() { # --option words... -> 0 when a word abbreviates or extends the option
+  local full=$1 w t; shift
+  for w in "$@"; do
+    case $w in --?*) ;; *) continue ;; esac
+    t=${w%%=*}
+    case $t in "$full"*) return 0 ;; esac
+    [ ${#t} -ge 4 ] || continue
+    case $full in "$t"*) return 0 ;; esac
+  done
+  return 1
+}
+
 pager_value_ok() { # value -> 0 when it is a pager git or gh may run
   case $1 in cat|less|more|true|false|'') return 0 ;; *) return 1 ;; esac
 }
@@ -229,23 +247,23 @@ check_git() { # words after `git`
     esac
   done
   local -a rest=("${w[@]:$i}")
-  has_flag '--output*' "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --output\` writes a file"
-  has_flag '--ext-diff' "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --ext-diff\` runs the configured external diff"
-  has_flag '--open-files-in-pager*' "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --open-files-in-pager\` runs a program"
-  has_flag '--upload-pack*' "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --upload-pack\` runs a program"
-  has_flag '--exec*' "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --exec\` runs a program"
-  has_flag '--config-env*' "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --config-env\` injects configuration"
+  long_opt_hit --output "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --output\` writes a file"
+  long_opt_hit --ext-diff "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --ext-diff\` runs the configured external diff"
+  long_opt_hit --open-files-in-pager "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --open-files-in-pager\` runs a program"
+  long_opt_hit --upload-pack "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --upload-pack\` runs a program"
+  long_opt_hit --exec "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --exec\` runs a program"
+  long_opt_hit --config-env "${rest[@]+"${rest[@]}"}" && deny "\`git $sub --config-env\` injects configuration"
   case $sub in
     diff|log|show|rev-parse|blame|ls-files|ls-tree|ls-remote|cat-file|merge-base|rev-list|status|describe|shortlog|name-rev|for-each-ref|show-ref|count-objects|check-ignore) ;;
     fetch)
       # A fetch updates remote-tracking refs, which is fine; a refspec with a destination, or
       # a forcing or pruning flag, writes or deletes the checkout's own branches.
-      if cluster_has fpPu "${rest[@]+"${rest[@]}"}" || has_flag '--force' "${rest[@]+"${rest[@]}"}" \
-         || has_flag '--prune*' "${rest[@]+"${rest[@]}"}" || has_flag '--update-head-ok' "${rest[@]+"${rest[@]}"}" \
-         || has_flag '--set-upstream' "${rest[@]+"${rest[@]}"}" || has_flag '--refmap*' "${rest[@]+"${rest[@]}"}"; then
+      if cluster_has fpPu "${rest[@]+"${rest[@]}"}" || long_opt_hit --force "${rest[@]+"${rest[@]}"}" \
+         || long_opt_hit --prune "${rest[@]+"${rest[@]}"}" || long_opt_hit --update-head-ok "${rest[@]+"${rest[@]}"}" \
+         || long_opt_hit --set-upstream "${rest[@]+"${rest[@]}"}" || long_opt_hit --refmap "${rest[@]+"${rest[@]}"}"; then
         deny "\`git fetch\` with a flag that forces, prunes or rewrites refs"
       fi
-      has_flag '--stdin' "${rest[@]+"${rest[@]}"}" && deny "\`git fetch --stdin\` reads refspecs the guard cannot see"
+      long_opt_hit --stdin "${rest[@]+"${rest[@]}"}" && deny "\`git fetch --stdin\` reads refspecs the guard cannot see"
       local r
       for r in "${rest[@]+"${rest[@]}"}"; do
         case $r in -*) ;; *:*|+*) deny "\`git fetch\` with a refspec destination writes a local ref; fetch the remote and read origin/<branch>" ;; esac
@@ -253,7 +271,7 @@ check_git() { # words after `git`
     grep)
       cluster_has O "${rest[@]+"${rest[@]}"}" && deny "\`git grep -O\` runs a program" ;;
     symbolic-ref)
-      if cluster_has dm "${rest[@]+"${rest[@]}"}" || has_flag '--delete' "${rest[@]+"${rest[@]}"}"; then
+      if cluster_has dm "${rest[@]+"${rest[@]}"}" || long_opt_hit --delete "${rest[@]+"${rest[@]}"}"; then
         deny "\`git symbolic-ref -d\` deletes a ref"
       fi
       [ "$(nonflags "${rest[@]+"${rest[@]}"}")" -le 1 ] || deny "\`git symbolic-ref\` with two refs writes one" ;;
@@ -263,11 +281,11 @@ check_git() { # words after `git`
       case ${rest[0]:-} in ''|-v|--verbose|show|get-url) ;; *) deny "\`git remote ${rest[0]}\` changes remotes" ;; esac ;;
     branch)
       if cluster_has dDmMcCuf "${rest[@]+"${rest[@]}"}" \
-         || has_flag '--delete' "${rest[@]+"${rest[@]}"}" || has_flag '--move' "${rest[@]+"${rest[@]}"}" \
-         || has_flag '--copy' "${rest[@]+"${rest[@]}"}" || has_flag '--force' "${rest[@]+"${rest[@]}"}" \
-         || has_flag '--set-upstream-to*' "${rest[@]+"${rest[@]}"}" || has_flag '--unset-upstream' "${rest[@]+"${rest[@]}"}" \
-         || has_flag '--edit-description' "${rest[@]+"${rest[@]}"}" || has_flag '--track' "${rest[@]+"${rest[@]}"}" \
-         || has_flag '--no-track' "${rest[@]+"${rest[@]}"}"; then
+         || long_opt_hit --delete "${rest[@]+"${rest[@]}"}" || long_opt_hit --move "${rest[@]+"${rest[@]}"}" \
+         || long_opt_hit --copy "${rest[@]+"${rest[@]}"}" || long_opt_hit --force "${rest[@]+"${rest[@]}"}" \
+         || long_opt_hit --set-upstream-to "${rest[@]+"${rest[@]}"}" || long_opt_hit --unset-upstream "${rest[@]+"${rest[@]}"}" \
+         || long_opt_hit --edit-description "${rest[@]+"${rest[@]}"}" || long_opt_hit --track "${rest[@]+"${rest[@]}"}" \
+         || long_opt_hit --no-track "${rest[@]+"${rest[@]}"}"; then
         deny "\`git branch\` with a flag that creates, moves or deletes a branch"
       fi
       # -v is verbosity, not list mode: `git branch -v new` creates `new`.
@@ -280,9 +298,9 @@ check_git() { # words after `git`
       fi ;;
     tag)
       if cluster_has dasfFmu "${rest[@]+"${rest[@]}"}" \
-         || has_flag '--delete' "${rest[@]+"${rest[@]}"}" || has_flag '--annotate' "${rest[@]+"${rest[@]}"}" \
-         || has_flag '--sign' "${rest[@]+"${rest[@]}"}" || has_flag '--force' "${rest[@]+"${rest[@]}"}" \
-         || has_flag '--message*' "${rest[@]+"${rest[@]}"}" || has_flag '--file*' "${rest[@]+"${rest[@]}"}"; then
+         || long_opt_hit --delete "${rest[@]+"${rest[@]}"}" || long_opt_hit --annotate "${rest[@]+"${rest[@]}"}" \
+         || long_opt_hit --sign "${rest[@]+"${rest[@]}"}" || long_opt_hit --force "${rest[@]+"${rest[@]}"}" \
+         || long_opt_hit --message "${rest[@]+"${rest[@]}"}" || long_opt_hit --file "${rest[@]+"${rest[@]}"}"; then
         deny "\`git tag\` with a flag that creates or deletes a tag"
       fi
       if [ "$(nonflags "${rest[@]+"${rest[@]}"}")" -gt 0 ] \
@@ -294,10 +312,10 @@ check_git() { # words after `git`
       fi ;;
     config)
       # Read forms only: a --get*/--list flag, or `get`/`list` as the subcommand itself.
-      if has_flag '--unset*' "${rest[@]+"${rest[@]}"}" || has_flag '--add' "${rest[@]+"${rest[@]}"}" \
-         || has_flag '--replace-all' "${rest[@]+"${rest[@]}"}" || has_flag '--edit' "${rest[@]+"${rest[@]}"}" \
-         || cluster_has e "${rest[@]+"${rest[@]}"}" || has_flag '--rename-section' "${rest[@]+"${rest[@]}"}" \
-         || has_flag '--remove-section' "${rest[@]+"${rest[@]}"}"; then
+      if long_opt_hit --unset "${rest[@]+"${rest[@]}"}" || long_opt_hit --add "${rest[@]+"${rest[@]}"}" \
+         || long_opt_hit --replace-all "${rest[@]+"${rest[@]}"}" || long_opt_hit --edit "${rest[@]+"${rest[@]}"}" \
+         || cluster_has e "${rest[@]+"${rest[@]}"}" || long_opt_hit --rename-section "${rest[@]+"${rest[@]}"}" \
+         || long_opt_hit --remove-section "${rest[@]+"${rest[@]}"}"; then
         deny "\`git config\` in a writing form"
       fi
       local first="" r
@@ -366,7 +384,7 @@ check_segment() { # the words of one simple command, unquoted
   case $prog in
     git) check_git "${rest[@]+"${rest[@]}"}" ;;
     gh) check_gh "${rest[@]+"${rest[@]}"}" ;;
-    sed|awk|gawk|mawk|nawk|curl|wget)
+    sed|awk|gawk|mawk|nawk|curl|wget|file)
       deny "\`$prog\` is not allowed for a read-only agent; read files with the Read and Grep tools and pages with WebFetch" ;;
     find)
       has_flag '-delete' "${rest[@]+"${rest[@]}"}" && deny "\`find -delete\` deletes"
@@ -376,16 +394,13 @@ check_segment() { # the words of one simple command, unquoted
       has_flag '-fls' "${rest[@]+"${rest[@]}"}" && deny "\`find -fls\` writes a file" ;;
     sort)
       cluster_has o "${rest[@]+"${rest[@]}"}" && deny "\`sort -o\` writes a file"
-      has_flag '--output*' "${rest[@]+"${rest[@]}"}" && deny "\`sort --output\` writes a file"
-      has_flag '--compress-program*' "${rest[@]+"${rest[@]}"}" && deny "\`sort --compress-program\` runs a program" ;;
+      long_opt_hit --output "${rest[@]+"${rest[@]}"}" && deny "\`sort --output\` writes a file"
+      long_opt_hit --compress-program "${rest[@]+"${rest[@]}"}" && deny "\`sort --compress-program\` runs a program" ;;
     uniq)
       [ "$(nonflags "${rest[@]+"${rest[@]}"}")" -le 1 ] || deny "\`uniq\` with two operands writes the second" ;;
     rg)
       has_flag '--pre*' "${rest[@]+"${rest[@]}"}" && deny "\`rg --pre\` runs a program on every file"
-      has_flag '--hostname-bin*' "${rest[@]+"${rest[@]}"}" && deny "\`rg --hostname-bin\` runs a program" ;;
-    file)
-      cluster_has C "${rest[@]+"${rest[@]}"}" && deny "\`file -C\` writes a compiled magic file"
-      has_flag '--compile' "${rest[@]+"${rest[@]}"}" && deny "\`file --compile\` writes a compiled magic file" ;;
+      long_opt_hit --hostname-bin "${rest[@]+"${rest[@]}"}" && deny "\`rg --hostname-bin\` runs a program" ;;
     ls|cat|head|tail|wc|grep|egrep|fgrep|tr|cut|jq|diff|comm|column|nl|echo|printf|true|false|test|'['|date|basename|dirname|realpath|readlink|pwd|which|type|stat|du|cd) ;;
     *) deny "\`$prog\` is not on the read-only allowlist" ;;
   esac
