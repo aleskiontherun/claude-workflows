@@ -49,11 +49,16 @@
 #          -l option, or the `get` or `list` subcommand. Before the subcommand: -C, -c with
 #          pager, color, abbreviation and locale keys (pager values as above), --namespace,
 #          --no-pager, -P, -p, --literal-pathspecs, --no-optional-locks,
-#          --no-replace-objects. Never --git-dir, --work-tree or --bare, and `-C <dir>` only
-#          where git's own discovery from <dir> would reach a checkout's `.git` before a bare
-#          repository: a repository under review can commit a bare one, with a `config`
-#          whose diff.external or core.fsmonitor is a program. (The hook's `cwd` resolves a
-#          relative <dir>; one that does not exist is left to git to fail on.)
+#          --no-replace-objects. Never --git-dir, --work-tree or --bare, and only where
+#          git's own discovery from the directory it starts in -- the shell's, moved by -C
+#          -- would reach a checkout's `.git` before a bare repository: a repository under
+#          review can commit a bare one, with a `config` whose diff.external or
+#          core.fsmonitor is a program
+#   cd     to one named directory that exists, and not into a bare repository, for the same
+#          reason; the shell's directory is tracked from the hook input's `cwd` through each
+#          `cd` and resolves every relative path after it. Never `cd -` or `cd ~user`. A
+#          relative path to a directory that does not exist is denied, since the hook's
+#          `cwd` is the only anchor the guard has for where the shell is
 #   gh     pr list|view|checks|diff|status; issue list|view; repo view; run list|view;
 #          release list|view; auth status; api with no method other than GET and no body.
 #          Never -w / --web, which opens a browser
@@ -67,7 +72,7 @@
 #   printf never -v, which assigns a variable: `printf -v PATH` would redirect every command
 #          after it to a program of the repository's
 #   and    ls cat head tail wc grep egrep fgrep tr cut jq diff comm column nl echo
-#          true false test [ basename dirname realpath readlink pwd which type stat du cd,
+#          true false test [ basename dirname realpath readlink pwd which type stat du,
 #          with any options: none of theirs writes a file or runs a program
 #   and every command named bare or under /usr/bin, /bin, /usr/local/bin or
 #          /opt/homebrew/bin: `./tools/git` or `node_modules/.bin/cat` is denied, since a
@@ -328,35 +333,73 @@ LOG_LONGVALS='max-count skip since after until before author committer grep grep
   min-parents max-parents glob exclude format encoding date
   decorate-refs decorate-refs-exclude filter missing max-age min-age default'
 
-# The directory git is run in, canonical, after the -C options so far: a later relative -C
-# is relative to it, as it is for git.
-GIT_DIR_BASE=""
-check_git_dir() { # the value of one -C
+# The shell's directory is tracked: the hook input's `cwd` to start with, moved by each `cd`
+# the command runs, and git's by each -C. A relative path to a directory that does not
+# exist is denied rather than left to fail, because the hook's `cwd` is the guard's only
+# anchor for the shell's directory, and a path that resolves nowhere from it may resolve
+# somewhere from where the shell really is. An absolute one that does not exist is left to
+# the shell or git to fail on, and moves nothing.
+resolve_dir() { # dir base -> the canonical directory on stdout; 1 if it is not a directory
   local d=$1
-  [ -n "$d" ] || return 0                       # git ignores an empty -C
-  case $d in /*) ;; *) d=${GIT_DIR_BASE:-$hook_cwd}/$d ;; esac
-  d=$(cd -P -- "$d" 2>/dev/null && pwd -P) || return 0   # not a directory: git fails on its own
-  GIT_DIR_BASE=$d
-  # Walk up as git's discovery does, and refuse to reach a bare repository -- `HEAD` beside
-  # `objects/` -- before a `.git`. A diff cannot commit a `.git` entry, but it can commit a
-  # bare repository whose config names a program to run.
+  case $d in /*) ;; *) d=$2/$d ;; esac
+  (cd -P -- "$d" 2>/dev/null && pwd -P)
+}
+reaches_bare_repo() { # canonical dir -> 0 if git's discovery from it meets a bare repository first
+  # Walk up as git does: a `.git` ends the search; `HEAD` beside `objects/` is a bare
+  # repository. A diff cannot commit a `.git` entry, but it can commit a bare repository
+  # whose config names a program to run.
+  local d=$1
   while :; do
-    [ -e "$d/.git" ] && return 0
-    [ -e "$d/HEAD" ] && [ -d "$d/objects" ] && deny "\`git -C $1\` would run in a bare repository, whose config can run a program; use a checkout"
-    [ "$d" = / ] && return 0
+    [ -e "$d/.git" ] && return 1
+    [ -e "$d/HEAD" ] && [ -d "$d/objects" ] && return 0
+    [ "$d" = / ] && return 1
     d=${d%/*}; [ -n "$d" ] || d=/
   done
+}
+check_cd() { # words after `cd`
+  local -a w=("$@")
+  local i=0 target new
+  while [ $i -lt ${#w[@]} ]; do
+    case ${w[$i]} in
+      --) i=$((i + 1)); break ;;
+      -[LPe@]*) i=$((i + 1)) ;;
+      *) break ;;
+    esac
+  done
+  [ $((${#w[@]} - i)) -le 1 ] || deny "\`cd\` takes one directory"
+  target=${w[$i]:-}
+  # shellcheck disable=SC2088  # the tildes are patterns, not paths to expand
+  case $target in
+    '') target=$HOME ;;
+    -) deny "\`cd -\` goes to a directory the guard cannot know; name it" ;;
+    '~') target=$HOME ;;
+    '~/'*) target=$HOME${target#\~} ;;
+    '~'*) deny "\`cd ~user\` goes to a directory the guard cannot know; name it" ;;
+  esac
+  if new=$(resolve_dir "$target" "$hook_cwd"); then
+    ! reaches_bare_repo "$new" || deny "\`cd $target\` enters a bare repository, whose config git would obey; stay in a checkout"
+    hook_cwd=$new
+  else
+    case $target in /*) ;; *) deny "\`cd $target\`: no such directory under $hook_cwd; name it from the root" ;; esac
+  fi
 }
 
 check_git() { # words after `git`
   local -a w=("$@")
-  local sub="" i=0
-  GIT_DIR_BASE=""
+  local sub="" i=0 dir=$hook_cwd v new walk=yes
   while [ $i -lt ${#w[@]} ]; do
     case ${w[$i]} in
       -c) check_git_config "${w[$((i + 1))]:-}"; i=$((i + 2)); continue ;;
       -c?*) check_git_config "${w[$i]#-c}"; i=$((i + 1)); continue ;;
-      -C) check_git_dir "${w[$((i + 1))]:-}"; i=$((i + 2)); continue ;;
+      -C)
+        # Each -C moves git, a relative one from where the previous left it.
+        v=${w[$((i + 1))]:-}
+        if [ -n "$v" ]; then                      # git ignores an empty -C
+          if new=$(resolve_dir "$v" "$dir"); then dir=$new
+          else case $v in /*) walk=no ;; *) deny "\`git -C $v\`: no such directory under $dir; name it from the root" ;; esac
+          fi
+        fi
+        i=$((i + 2)); continue ;;
       --namespace) i=$((i + 2)); continue ;;
       --git-dir|--git-dir=*|--work-tree|--work-tree=*|--bare) deny "\`git ${w[$i]%%=*}\` points git at a repository of the command's choosing, whose config can run a program; use -C on a checkout" ;;
       --namespace=*|--no-pager|-P|--paginate|-p|--literal-pathspecs|--no-optional-locks|--no-replace-objects) i=$((i + 1)); continue ;;
@@ -364,6 +407,11 @@ check_git() { # words after `git`
       *) sub=${w[$i]}; i=$((i + 1)); break ;;
     esac
   done
+  # Where git starts, -C or not; a -C to an absolute directory that does not exist is git's
+  # own error, before it reads any config.
+  if [ $walk = yes ] && reaches_bare_repo "$dir"; then
+    deny "git would run in a bare repository ($dir), whose config can run a program; use -C on a checkout"
+  fi
   local -a rest=("${w[@]:$i}")
   NEGATE=yes
   case $sub in
@@ -573,7 +621,8 @@ check_segment() { # the words of one simple command, unquoted
           *) break ;;
         esac
       done ;;
-    ls|cat|head|tail|wc|grep|egrep|fgrep|tr|cut|jq|diff|comm|column|nl|echo|true|false|test|'['|basename|dirname|realpath|readlink|pwd|which|type|stat|du|cd) ;;
+    cd) check_cd "${rest[@]+"${rest[@]}"}" ;;
+    ls|cat|head|tail|wc|grep|egrep|fgrep|tr|cut|jq|diff|comm|column|nl|echo|true|false|test|'['|basename|dirname|realpath|readlink|pwd|which|type|stat|du) ;;
     *) deny "\`$prog\` is not on the read-only allowlist" ;;
   esac
   return 0
