@@ -2,9 +2,12 @@
 # Tests for readonly-guard.sh. No framework: each case feeds the guard one hook input on
 # stdin and asserts whether it denied the call.
 #
-#   readonly-guard.test.sh
+#   [GUARD_BASH=<bash>] readonly-guard.test.sh
 #
-# Exits 0 if every case passes, 1 otherwise. Needs jq and perl.
+# Exits 0 if every case passes, 1 otherwise. Needs jq and perl. GUARD_BASH is the bash that
+# runs the guard, `bash` from PATH by default; when the stock /bin/bash is a different
+# version, the suite runs itself a second time with GUARD_BASH=/bin/bash, so every case
+# also holds on the 3.2 that macOS ships.
 # shellcheck disable=SC2016  # the cases are command text, not expressions to expand
 
 set -u
