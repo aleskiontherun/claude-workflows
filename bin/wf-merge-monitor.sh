@@ -7,7 +7,7 @@
 # set, else to the current directory. Pass an absolute path when arming a session-length
 # monitor -- a cwd that drifts must not point it at another checkout. The branches are
 # the plan's still-eligible branches in that repo, IN QUEUE ORDER -- the order the
-# wf-conduct skill's merge queue derives, which is not PR order. Every `gh` call names
+# conduct skill's merge queue derives, which is not PR order. Every `gh` call names
 # the repo with `-R <owner>/<name>`, read from the checkout's `origin`; a checkout whose
 # origin is not on github.com is queried from its own directory instead.
 #
@@ -37,14 +37,14 @@
 # Each `gh` call is bounded at 30s and retried three times with 5s backoff; a hang is a
 # failed attempt, `no checks reported` is an expected state and is not retried. Why the
 # queue works this way -- only the head is prepared for merge, `tip` shows pushes the
-# other fields cannot -- is the wf-conduct skill's to say and is not repeated here.
+# other fields cannot -- is the conduct skill's to say and is not repeated here.
 #
 # Needs bash, gh and jq. wf-merge-monitor.test.sh beside this file covers every state
 # above against a stubbed `gh` that runs this script's own --jq expressions.
 
 set -u
 
-# Testing knobs, all three: the wf-conduct skill specifies a 60s poll, and the 5s backoff
+# Testing knobs, all three: the conduct skill specifies a 60s poll, and the 5s backoff
 # and 30s bound are what absorb a flapping network. The test turns them down.
 interval=${WF_MERGE_MONITOR_INTERVAL:-60}
 backoff=${WF_MERGE_MONITOR_BACKOFF:-5}

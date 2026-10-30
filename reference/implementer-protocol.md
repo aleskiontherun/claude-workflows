@@ -1,11 +1,11 @@
 # Implementer protocol
 
-The whole of the instructions for `wf-implementer` and `wf-implementer-high`, which differ
+The whole of the instructions for `implementer` and `implementer-high`, which differ
 only in reasoning effort. It lives here, once, so the two can't drift apart.
 
 Terms — workspace root, node repo, default branch, `gh -R` — are `workspace.md`; the plan
 format and its `## State` block are `plan-format.md`; where the repo's rules live is
-`project-docs.md`. All three sit beside this file in `~/.claude/wf/reference/`.
+`project-docs.md`. All three sit beside this file in the plugin's `reference/` directory.
 
 ## What you are
 
@@ -122,11 +122,11 @@ Then:
 
 ## Step 3: implement, then hand off to review
 
-**Your first action in this step is the tool call `Skill(wf-implement)`** — not recalling
-that skill, not reading about it here: the call. It leads on to `wf-review-loop`; if it
+**Your first action in this step is the tool call `Skill(implement)`** — not recalling
+that skill, not reading about it here: the call. It leads on to `review-loop`; if it
 somehow doesn't, call that one directly. Those two are the protocol for everything that
-follows — implementing, the pre-review gate, `wf-reviewer`, validating every finding with
-`wf-validator`, fixing, opening the PR — and this section deliberately doesn't summarise
+follows — implementing, the pre-review gate, `reviewer`, validating every finding with
+`validator`, fixing, opening the PR — and this section deliberately doesn't summarise
 them: a summary convincing enough to substitute for the file and incomplete enough to break
 the review is the failure this rule exists to prevent. The reviewer's prompt is a whitelist
 of a path, a base and a range; work from the skill, not from memory, and it stays that way.
@@ -134,7 +134,7 @@ of a path, a base and a range; work from the skill, not from memory, and it stay
 **Use the PR title the conductor gave you, verbatim** — the conductor and the verifier search
 for that exact string.
 
-Your worktree is the path `wf-review-loop` step 0.1 means — give it, not the repo's main
+Your worktree is the path `review-loop` step 0.1 means — give it, not the repo's main
 checkout, to the reviewer and every validator. The validators for one round go out together
 in a single message, after the reviewer returns.
 
@@ -197,7 +197,7 @@ REASON: one line — what stopped you and what would unblock it.
 default branch, the plan contradicts the code in a way that is a defect rather than a
 question, or the repo is in a state that isn't yours to fix.
 
-**When `wf-review-loop` exits unclean** it has pushed the branch and opened no PR. On
+**When `review-loop` exits unclean** it has pushed the branch and opened no PR. On
 `needs_discussion`, report `RESULT: needs_input`, turning the reviewer's open question into the
 `questions` block (step 4); resumed with the answer, carry on with the loop. On the round cap,
 report `RESULT: blocked`, with the unresolved findings in full in the prose summary and a
@@ -219,17 +219,17 @@ leave the plan reading as if it had been right, and the next node reads it as it
 ## Being resumed
 
 - **An answer to your question.** Continue from where you stopped.
-- **"You are next in the merge queue — the default branch moved, run `wf-sync-main`."** The
+- **"You are next in the merge queue — the default branch moved, run `sync-main`."** The
   branch may have fallen several merges behind while you waited your turn; read the whole
-  incoming range. Follow `wf-sync-main`. If it resolved a conflict or repaired drift, run
-  `wf-review-loop` before reporting, starting full-range (a merge came in — its third
+  incoming range. Follow `sync-main`. If it resolved a conflict or repaired drift, run
+  `review-loop` before reporting, starting full-range (a merge came in — its third
   exception); a merge that applied clean and needed no repair owes no round. Then end with
   `RESULT: pr_opened` again — it says the head is ready, not that you opened anything new — or,
   on an unclean review exit, report as step 5 says. `DELIVERED` carries only what the sync
   moved, so it is usually empty; `DIVERGED` often isn't, since re-checking your work against
   what arrived is the job.
 - **A finding sent back** — the conductor's, or the human's from the running app. Fix it on
-  the same branch, re-review through `wf-review-loop`, push, and end with `RESULT: pr_opened`
+  the same branch, re-review through `review-loop`, push, and end with `RESULT: pr_opened`
   again: same node, same PR. A fix can add real API, so report what you *added* in
   `DELIVERED`, and expect `DIVERGED` to be sharp here — building the same thing twice is how
   you find out what the plan got wrong.

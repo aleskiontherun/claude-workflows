@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Check one plan against the shape ~/.claude/wf/reference/plan-format.md defines: the
+# Check one plan against the shape reference/plan-format.md defines: the
 # `## State` block, the Status ledger and prose that mirror it, and the DRAFT marker.
 #
 #   wf-plan-lint.sh <plan.md>
@@ -50,7 +50,7 @@
 # strategy document and passes.
 #
 # Why each check exists is plan-format.md's to say, and
-# ~/.claude/wf/reference/plan-review-loop.md says when to run this: before every review
+# reference/plan-review-loop.md says when to run this: before every review
 # round, every fold-checker spawn and every commit of a plan. Run from memory, these
 # checks get skipped before a fold, which is where they catch the most.
 #

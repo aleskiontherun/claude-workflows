@@ -1,0 +1,17 @@
+{
+  "description": "Keeps ontherun's read-only agents read-only: every Bash call made by reviewer, validator, plan-reviewer, plan-validator or fold-checker is checked against an allowlist of read-only commands and denied otherwise. Calls from anyone else pass through untouched.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/wf-readonly-guard.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 # Reading a project's own rules
 
-Every `wf-` skill and agent takes a project's conventions from the project — not from
+Every skill and agent in this plugin takes a project's conventions from the project — not from
 memory, and not from whoever invoked it. This file says where they live and how to treat
 each one. It is the only copy; the others point here.
 

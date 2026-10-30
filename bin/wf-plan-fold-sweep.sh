@@ -76,7 +76,7 @@
 # the conductor judges legitimate ("42 of the 384", where 384 is the total) is the
 # ordinary reason to go on to the spawn.
 #
-# Why it exists: ~/.claude/wf/reference/plan-review-loop.md has the conductor sweep the
+# Why it exists: reference/plan-review-loop.md has the conductor sweep the
 # plan after every fold, and fold-checker's second question is the same sweep by a clean
 # reader; both otherwise decide what to grep for from memory, which misses the old
 # value standing a hundred lines below the edit. What it cannot see is a rule added

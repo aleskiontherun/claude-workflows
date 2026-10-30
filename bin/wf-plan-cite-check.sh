@@ -58,7 +58,7 @@
 # With ` @ <sha>` a MISS or DRIFT is measured at that sha too, and the line says whether
 # the tree moved since or the citation was wrong when written. Informational.
 #
-# DRIFT is a warning because ~/.claude/wf/reference/plan-format.md (*How a plan cites the
+# DRIFT is a warning because reference/plan-format.md (*How a plan cites the
 # tree*) says ranges are hints and the named construct is the fact. A symbol preceded by
 # "no", "not", "never", "without", "gains" or "adds" is an assertion of absence, or of a
 # future, and is not looked for; repo names and file names are not symbols. What none of
@@ -67,7 +67,7 @@
 # The workspace root is $WF_WORKSPACE, else the parent of the nearest ancestor directory
 # named `plans`, else the plan's git toplevel; a linked worktree of a workspace repo
 # resolves to its main working tree, where the nested checkouts are
-# (~/.claude/wf/reference/workspace.md). Node repos are the git checkouts under it --
+# (reference/workspace.md). Node repos are the git checkouts under it --
 # not the plans repo -- plus the root itself when it is a code checkout with `plans/`
 # nested inside it (`repo: .`).
 #

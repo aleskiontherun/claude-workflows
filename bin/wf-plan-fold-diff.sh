@@ -5,7 +5,7 @@
 #   wf-plan-fold-diff.sh <plan.md> [<base-ref>]
 #
 # The file holds `git diff <base-ref> -- <plan.md>`, run in the plan's own repository --
-# the plans repo (~/.claude/wf/reference/workspace.md), whichever layout -- against
+# the plans repo (reference/workspace.md), whichever layout -- against
 # <base-ref>, which defaults to HEAD; and nothing else. It lands under
 # $CLAUDE_SCRATCHPAD, or /tmp when that is unset, as fold-<plan>-<timestamp>.diff. Only
 # the path goes to stdout, so `$(...)` captures it; a one-line count of what the diff
@@ -18,7 +18,7 @@
 # is not there -- or it is already committed and <base-ref> should be the commit before
 # it), an untracked plan (a whole new file is a plan review, not a fold), a plan outside
 # any git repository, or a ref git cannot resolve. 64 on usage.
-# ~/.claude/wf/reference/plan-review-loop.md says what to do with the path.
+# reference/plan-review-loop.md says what to do with the path.
 #
 # Needs bash and git. wf-plan-fold-diff.test.sh beside this file covers each case in both
 # layouts.

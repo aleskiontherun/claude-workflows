@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # Shared by the wf- scripts beside this file; sourced, never run. It resolves the terms
-# ~/.claude/wf/reference/workspace.md defines, so every script answers "which directory is
+# reference/workspace.md defines, so every script answers "which directory is
 # the workspace root", "which ref is this repo's default branch" and "which GitHub repo is
 # this checkout" the same way.
 #

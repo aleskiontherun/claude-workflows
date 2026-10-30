@@ -1,22 +1,26 @@
 # The plan-review loop
 
 **A reference file, not a skill.** Two skills run this loop and neither restates it:
-`wf-plan` runs it over a plan nobody has built yet, and `wf-conduct` §4 runs it over a fold
+`plan` runs it over a plan nobody has built yet, and `conduct` §4 runs it over a fold
 made while the plan is half shipped. They differ on exactly one thing — where a blocking
-verdict goes — and that difference is stated in step 3 below and in `wf-conduct` §4. Read it
-from whichever skill sent you, and use that skill's routing rather than inventing one.
+verdict goes — and that difference is stated in step 3 below and in *Mid-flight routing* at the
+end. Read it from whichever skill sent you, and use that skill's routing rather than inventing
+one.
 
 It is a loop, not a single call, for the same reason code review is one: folding a finding in
 changes the plan, and the changed part is then the part nobody has read.
 
 The plan format, its sections and its `## State` block are `plan-format.md`; paths,
 the plans repo and node repos are `workspace.md`. Both sit beside this file in
-`~/.claude/wf/reference/`. Scripts are in `~/.claude/wf/bin/`.
+the plugin's `reference/` directory. Scripts are in the plugin's `bin/`, beside it: the
+plugin root is the parent of this file's `reference/`, and the skill that sent you here names
+it in full. Agents are spawned by their namespaced names — `ontherun:plan-reviewer`,
+`ontherun:plan-validator`, `ontherun:fold-checker`.
 
 ## Run the mechanical checks before every round
 
 Cheap and deterministic, and each strips a class of finding before an expensive whole-plan
-read can spend itself on it — the same trade `wf-review-loop` step 0 makes with lint and
+read can spend itself on it — the same trade `review-loop` step 0 makes with lint and
 tests.
 
 - **`wf-plan-cite-check.sh <plan>`** — every cited file at `origin/<default>` after a fetch,
@@ -36,24 +40,25 @@ tests.
   plan says. Where the plan has a `## Derivations` section, update a row's count and date
   whenever one moves.
 
-**`wf-plan-lint.sh` also runs before every `wf-fold-checker` spawn and before every commit of
+**`wf-plan-lint.sh` also runs before every `fold-checker` spawn and before every commit of
 a plan**, since a fold is where its Status checks earn their keep — it answers in under a
 second, a fold-checker pass takes minutes.
 
 Before round 1 these run over the whole plan. **Before every later round, and before a
-`wf-conduct` §4 mid-flight round, they run over whatever the fold touched** — the least-checked
+`conduct` §4 mid-flight round, they run over whatever the fold touched** — the least-checked
 text in front of the next reviewer, since a validator judged the finding *before* you wrote
 anything and nothing has read the sentence you then wrote.
 
 **This is not the reviewer's passes done early, and can't be.** You wrote the plan; a sweep
-you run over your own document proves you can grep. `wf-plan-reviewer` still runs all its
+you run over your own document proves you can grep. `plan-reviewer` still runs all its
 passes. What the sweep buys is that its mechanical passes find nothing and its time goes to
 reasoning, which is where the findings that change the work come from.
 
 ## The loop
 
-1. **Spawn `wf-plan-reviewer`** with only the plan path and the workspace root. No summary,
-   no framing, no account of what an earlier round said — the whitelist `wf-review-loop`
+1. **Spawn `plan-reviewer`** (`subagent_type: ontherun:plan-reviewer`) with only the plan
+   path and the workspace root. No summary,
+   no framing, no account of what an earlier round said — the whitelist `review-loop`
    step 1 puts on code reviewers, for the same reason.
 
    **From round 2 on, add one more path: a diff of everything the plan changed since the
@@ -62,7 +67,7 @@ reasoning, which is where the findings that change the work come from.
    plans repo — `workspace.md`) and record the commit in the round's `## Review history`
    entry. The reviewer runs its citation, external and completeness passes over the sections
    that diff touches and still reads the whole plan for sequencing and reasoning. A diff is a
-   location, like the sibling checkout `wf-review-loop` admits: it says where the plan moved,
+   location, like the sibling checkout `review-loop` admits: it says where the plan moved,
    never what it now says or why. A round given no diff reads everything whole.
 
 2. **Read the verdict from the last line.**
@@ -75,11 +80,11 @@ reasoning, which is where the findings that change the work come from.
      is the exit to expect. A loop that won't reach it is usually filing count deltas or
      floors as `blocking`, or sending stated commands to validators instead of running them.
    - `VERDICT: not_implementable` — stop, whatever the round count. **Demote the plan**
-     (below), carrying the reviewer's reasons as the open questions, and go to `wf-plan`'s
+     (below), carrying the reviewer's reasons as the open questions, and go to `plan`'s
      detailing pass.
    - `VERDICT: revise` — validate the findings, fold what survives, go back to 1.
 
-   **Every fold this step makes goes through `wf-fold-checker` before you go on** (*Check the
+   **Every fold this step makes goes through `fold-checker` before you go on** (*Check the
    fold*, below), whichever exit you are routing to. On `corrections_only` it is the last
    clean context that reads the plan.
 
@@ -87,12 +92,12 @@ reasoning, which is where the findings that change the work come from.
    the mechanical passes. Code review scopes by range because a regression lives in the fix
    that introduced it; a plan's defects are relational — a node whose `needs` contradicts the
    prose — and live between the changed part and everything else, where no range reaches.
-   That is also why this loop's cap can be 2 where `wf-review-loop`'s is 6: every round here
+   That is also why this loop's cap can be 2 where `review-loop`'s is 6: every round here
    already reads the whole document.
 
-   **Step 2's routing is `wf-plan`'s only.** A mid-flight round from `wf-conduct` §4 must not
+   **Step 2's routing is `plan`'s only.** A mid-flight round from `conduct` §4 must not
    follow it: demotion strips the `## State` block, which by then records merged nodes and
-   their shas. Its routing is written in that skill's §4.
+   their shas. Its routing is *Mid-flight routing*, below.
 
 4. **Cap at 2 rounds.** If round 2 still comes back `revise`, stop and take the findings to
    the human. Don't fold them in and promote anyway: two rounds each finding something
@@ -101,7 +106,7 @@ reasoning, which is where the findings that change the work come from.
    fix.
 
    **Before treating a cap as terminal, read the plan's preamble for a recorded exit policy
-   and a recorded round budget** — the two questions `wf-plan` asks the owner when it writes
+   and a recorded round budget** — the two questions `plan` asks the owner when it writes
    the plan:
    - the **exit policy**, standing form: *a cap whose open findings all carry a single
      evident resolution is folded and the loop re-entered, without stopping*;
@@ -140,11 +145,11 @@ reasoning, which is where the findings that change the work come from.
    or saying it is ready to implement — is the plan's version of opening a PR. Make that claim
    on `VERDICT: sound`, or on `corrections_only` once the corrections are folded, and at no
    other time (an owner's ruling under step 4 is the owner's claim, not yours, and is labelled
-   as such). A plan whose `DRAFT` marker has gone routes to `wf-conduct`, which launches
+   as such). A plan whose `DRAFT` marker has gone routes to `conduct`, which launches
    implementers; promoting mid-review removes the one marker standing between an unfinished
    design and a wave of agents building it.
 
-   **This step is the only thing that writes that claim**, which is why `wf-plan` tells you
+   **This step is the only thing that writes that claim**, which is why `plan` tells you
    what to write at creation instead. A plan picked up with a readiness claim and no exit
    named is treated as if the claim were absent.
 
@@ -156,7 +161,7 @@ reasoning, which is where the findings that change the work come from.
 
 ## Validate a finding before you fold it
 
-`citation`, `external` and `completeness` findings go to a `wf-plan-validator` — one per
+`citation`, `external` and `completeness` findings go to a `plan-validator` — one per
 finding, all in a single message — and anything that comes back `RESULT: not confirmed` is
 dropped rather than folded. You are the plan's author and, until the human sees it, its only
 reader; folding a finding unchecked is the author acting on an unexamined claim about their
@@ -214,7 +219,7 @@ carry an absolute or name a file. Read the list whole, fix what is stale, write 
 Its exit 1 is a list to read, not a verdict. What it can't see is a rule added beside a
 sentence it contradicts, with nothing removed — that stays the checker's.
 
-**Then spawn `wf-fold-checker`** with three paths and nothing else: the plan, the diff file,
+**Then spawn `fold-checker`** (`ontherun:fold-checker`) with three paths and nothing else: the plan, the diff file,
 and the workspace root. It answers two questions — is what the fold asserts true against the
 trees, and did the fold leave a claim standing elsewhere that it just made wrong — and ends
 `VERDICT: fold_holds` or `VERDICT: fold_defective`. On `fold_defective`, fix what it names and
@@ -230,7 +235,7 @@ is a claim, not a finding.
 **It is cheap because of what it reads** — a diff and the sections it touches, at medium
 effort, against a whole-plan round at extra-high. It neither buys nor spends a round: run it
 after *every* fold, and the whole-plan rounds still happen exactly where this loop and
-`wf-conduct` §4 put them. The sweep scripts and the checker miss in opposite directions — a
+`conduct` §4 put them. The sweep scripts and the checker miss in opposite directions — a
 grep can't tell that a true sentence contradicts a paragraph four sections away, and a reader
 won't re-run your derivations — so run both.
 
@@ -242,9 +247,9 @@ reviewer's own rule against flagging named owner calls does the suppressing.
 
 ## Demoting a plan
 
-Both non-clean exits send the plan back to `wf-plan`'s detailing pass, and must leave it in
+Both non-clean exits send the plan back to `plan`'s detailing pass, and must leave it in
 the shape that pass expects. **Never demote a plan with a launched node** — anything past
-`pending`. That is `wf-conduct` §4's case, routed there.
+`pending`. That is `conduct` §4's case, routed there.
 
 Full demotion is three things together:
 
@@ -256,3 +261,19 @@ The marker without the questions is worse than nothing: the detailing pass takes
 from that heading, finds it empty, and re-runs this loop against an unchanged plan. The block
 may stay when step 4's shallow-park test holds. `not_implementable` never parks shallow — it
 says the shape itself is wrong, so caching the shape is exactly what not to do.
+
+## Mid-flight routing
+
+A round `conduct` §4 runs over a plan with launched nodes does not route like step 2, and
+must not: demotion strips the `## State` block, which by then records merged nodes and their
+squash shas — the one thing a dying session can't reconstruct.
+
+So a `revise` routes by the plan's recorded **exit policy**, as step 4 routes a cap: blocking
+findings with a single evident resolution are folded (checker over the fold) and one more
+whole-plan round runs before the wave launches, inside the preamble's **round budget**. A
+budget that runs out ends the segment as the decision that set it says — promote-and-launch
+with the open findings recorded where it ruled ahead, otherwise back to the owner with the
+wave held. A genuine design fork, a `not_implementable`, or a plan with no recorded policy or
+budget stops the wave and goes to the human. Stopped or not: launch nothing from a stopped
+wave, demote nothing, leave the block alone. Merged nodes stay `merged` whatever is decided.
+`corrections_only` is the ordinary outcome: fold and launch.

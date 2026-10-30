@@ -6,7 +6,7 @@
 # Prints the ledger -- one bullet per node, in block order, under the plan's phase
 # headings -- or, with --write, splices it into the plan in place of the ledger that is
 # there. The block is the source and the ledger is derived from it, never hand-edited
-# (~/.claude/wf/reference/plan-format.md, *Who writes which*). The shape is
+# (reference/plan-format.md, *Who writes which*). The shape is
 # `- **<id>** <title> — <state>`, the title in backticks for a PR node and plain for a
 # `setup` or `manual` one, the state worded as that file's live-plan example.
 #
@@ -16,7 +16,7 @@
 # remote elsewhere, they render unlinked -- `#12`, `` `abc1234` `` -- and a note goes to
 # stderr. `repo: .` is the workspace root itself (the single-repo layout). The root is
 # $WF_WORKSPACE, else the parent of the nearest ancestor directory named `plans`, else the
-# plan's git toplevel (~/.claude/wf/reference/workspace.md).
+# plan's git toplevel (reference/workspace.md).
 #
 # Phase headings come from the block's `# ---- <name> ----` comments: each one groups
 # the nodes that follow it, and the ledger gets a bold heading line before that group.
