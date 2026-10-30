@@ -410,8 +410,11 @@ expect allow $R 'printf -- -v'
 # may reach one, and --git-dir, --work-tree and --bare name one outright. cd is allowed only
 # as the whole command: whether a cd takes effect depends on grammar the guard does not read.
 GUARD_TMP=$(mktemp -d)
-mkdir -p "$GUARD_TMP/repo/.git" "$GUARD_TMP/repo/fixtures/x.git/objects" "$GUARD_TMP/repo/fixtures/x.git/refs" "$GUARD_TMP/repo/fixtures/x.git/sub" "$GUARD_TMP/repo/a/x.git"
+mkdir -p "$GUARD_TMP/repo/.git" "$GUARD_TMP/repo/fixtures/x.git/objects" "$GUARD_TMP/repo/fixtures/x.git/refs" "$GUARD_TMP/repo/fixtures/x.git/sub"
 : > "$GUARD_TMP/repo/fixtures/x.git/HEAD"
+# A bare repository at the root and a plain decoy of the same name one level down.
+mkdir -p "$GUARD_TMP/repo/x.git/objects" "$GUARD_TMP/repo/x.git/refs" "$GUARD_TMP/repo/a/x.git"
+: > "$GUARD_TMP/repo/x.git/HEAD"
 X=$GUARD_TMP/repo/fixtures/x.git
 expect deny  $R "git -C $X diff HEAD~1 HEAD"
 expect deny  $R "git -C $X/sub log"                          # discovery walks up into the bare repo
@@ -459,11 +462,12 @@ expect_cwd allow "$GUARD_TMP/repo" 'cd fixtures'
 expect_cwd deny  "$GUARD_TMP/repo" 'cd nowhere'
 expect_cwd deny  "$GUARD_TMP/repo" 'cd fixtures && git log'
 expect_cwd deny  "$GUARD_TMP/repo" 'cd fixtures && git -C x.git log'
-# A cd that did not take effect must not move the guard: a/x.git is a plain directory.
-expect_cwd deny  "$GUARD_TMP/repo" 'false && cd a; cd fixtures/x.git; git log'
-expect_cwd deny  "$GUARD_TMP/repo" 'cd a | true; cd fixtures/x.git; git log'
-expect_cwd deny  "$GUARD_TMP/repo" '(cd a); cd fixtures/x.git; git log'
-expect_cwd deny  "$GUARD_TMP/repo" 'cd a & cd fixtures/x.git; git log'
+# A cd that did not take effect must not move the guard: followed into `a`, the second cd
+# would resolve to the plain a/x.git, while the shell enters the bare x.git at the root.
+expect_cwd deny  "$GUARD_TMP/repo" 'false && cd a; cd x.git; git log'
+expect_cwd deny  "$GUARD_TMP/repo" 'cd a | true; cd x.git; git log'
+expect_cwd deny  "$GUARD_TMP/repo" '(cd a); cd x.git; git log'
+expect_cwd deny  "$GUARD_TMP/repo" 'cd a & cd x.git; git log'
 expect_cwd deny  "$X" 'git log'                              # no -C at all
 expect_cwd deny  "$X/sub" 'git status'
 got=$(cd "$GUARD_TMP/repo" && decision $R 'git -C fixtures/x.git log')
