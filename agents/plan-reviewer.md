@@ -77,7 +77,7 @@ three things: the output against the row's number, the row's number against the 
 in the prose, and the command against what that list claims to enumerate. A row that
 reproduces retires the arithmetic, not the scope — a too-narrow command reproduces perfectly.
 A row whose count moved is a `correction`; a prose list shorter than its own row is too. A
-command you can't run under your tool allowlist (a pipe through `tr`), say so in one line and
+command you can't run under the read-only guard (a `sed` or `awk` step), say so in one line and
 judge its scope on its face.
 
 Flag the *form* of a list — a census where a sweep instruction belongs — only where it is

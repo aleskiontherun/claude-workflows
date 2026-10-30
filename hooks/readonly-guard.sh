@@ -45,7 +45,7 @@
 #          /opt/homebrew/bin: `./tools/git` or `node_modules/.bin/cat` is denied, since a
 #          repository under review can ship a binary by any name
 #   sort   without -o or --compress-program;  uniq  with at most one operand;  rg  without
-#          --pre
+#          --pre or --hostname-bin;  file  without -C or --compile
 #   and    ls cat head tail wc grep egrep fgrep tr cut jq diff comm column nl echo printf
 #          true false test [ date basename dirname realpath readlink pwd which type file
 #          stat du cd
@@ -381,8 +381,12 @@ check_segment() { # the words of one simple command, unquoted
     uniq)
       [ "$(nonflags "${rest[@]+"${rest[@]}"}")" -le 1 ] || deny "\`uniq\` with two operands writes the second" ;;
     rg)
-      has_flag '--pre*' "${rest[@]+"${rest[@]}"}" && deny "\`rg --pre\` runs a program on every file" ;;
-    ls|cat|head|tail|wc|grep|egrep|fgrep|tr|cut|jq|diff|comm|column|nl|echo|printf|true|false|test|'['|date|basename|dirname|realpath|readlink|pwd|which|type|file|stat|du|cd) ;;
+      has_flag '--pre*' "${rest[@]+"${rest[@]}"}" && deny "\`rg --pre\` runs a program on every file"
+      has_flag '--hostname-bin*' "${rest[@]+"${rest[@]}"}" && deny "\`rg --hostname-bin\` runs a program" ;;
+    file)
+      cluster_has C "${rest[@]+"${rest[@]}"}" && deny "\`file -C\` writes a compiled magic file"
+      has_flag '--compile' "${rest[@]+"${rest[@]}"}" && deny "\`file --compile\` writes a compiled magic file" ;;
+    ls|cat|head|tail|wc|grep|egrep|fgrep|tr|cut|jq|diff|comm|column|nl|echo|printf|true|false|test|'['|date|basename|dirname|realpath|readlink|pwd|which|type|stat|du|cd) ;;
     *) deny "\`$prog\` is not on the read-only allowlist" ;;
   esac
   return 0
