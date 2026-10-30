@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Fixtures quote code in backticks inside single quotes, on purpose.
 # shellcheck disable=SC2016
-# Tests for wf-plan-ledger.sh. No framework: fixture plans written into a throwaway
+# Tests for ontherun-plan-ledger.sh. No framework: fixture plans written into a throwaway
 # workspace whose nested checkouts carry fake GitHub remotes, the script run against them,
 # and assertions on stdout, stderr, exit status and the rewritten file.
 #
-#   wf-plan-ledger.test.sh
+#   ontherun-plan-ledger.test.sh
 #
 # Exits 0 if every case passes, 1 otherwise. Needs git. Runs in about a second.
 #
@@ -17,7 +17,7 @@
 # form the script must read (scp-style, ssh://, https), one two levels down, one whose
 # remote is not GitHub, and a repo the block names with no checkout at all. Both layouts
 # are covered -- a workspace repo with nested checkouts, and a single repo whose `plans/`
-# is a nested git repo of its own -- plus $WF_WORKSPACE and a plan read from a worktree
+# is a nested git repo of its own -- plus $ONTHERUN_WORKSPACE and a plan read from a worktree
 # of the workspace repo, which carries none of the nested checkouts.
 #
 # git runs with per-command overrides only, never `git config` into a repo, and with
@@ -26,7 +26,7 @@
 set -u
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-LEDGER="$SCRIPT_DIR/wf-plan-ledger.sh"
+LEDGER="$SCRIPT_DIR/ontherun-plan-ledger.sh"
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -103,7 +103,7 @@ plan() {
   } > "$out"
 }
 
-echo "wf-plan-ledger.sh"
+echo "ontherun-plan-ledger.sh"
 
 # ------------------------------------------------------------------ every status
 
@@ -515,8 +515,8 @@ plan "$TMP/nopr.md" "$TMP/nopr.yaml"
 cp "$TMP/nopr.md" "$TMP/nopr-before.md"
 run "$TMP/nopr.md" --write
 assert_eq "a node missing what its status needs: exit 1" 1 "$RC"
-assert_has "  open with no pr is named, under the prefix wf-plan-lint.sh strips" \
-  "wf-plan-ledger: $TMP/nopr.md: node api-1: open with no pr" "$ERR"
+assert_has "  open with no pr is named, under the prefix ontherun-plan-lint.sh strips" \
+  "ontherun-plan-ledger: $TMP/nopr.md: node api-1: open with no pr" "$ERR"
 assert_has "  merged with no sha is named" "node api-2: merged with no sha" "$ERR"
 assert_has "  done on a pr node is named" "node api-3: done on a pr node" "$ERR"
 assert_has "  an unknown status is named" "node api-4: unknown status \`shipped\`" "$ERR"
@@ -557,14 +557,14 @@ plan done/shipped.md "$TMP/one.yaml"
 run "$WS/plans/done/shipped.md"
 assert_out "a plan in plans/done/ resolves the same workspace root" "$WANT" "$OUT"
 
-# A plan outside any plans/ directory finds nothing on its own, and $WF_WORKSPACE names
+# A plan outside any plans/ directory finds nothing on its own, and $ONTHERUN_WORKSPACE names
 # the root for it.
 mkdir -p "$TMP/elsewhere"
 plan "$TMP/elsewhere/p.md" "$TMP/one.yaml"
 run "$TMP/elsewhere/p.md"
 assert_has "a plan outside the workspace renders unlinked" "— #7 merged, squash \`1234abc\`" "$OUT"
-OUT=$(WF_WORKSPACE="$WS" "$LEDGER" "$TMP/elsewhere/p.md" 2>/dev/null)
-assert_out "  and \$WF_WORKSPACE names the root for it" "$WANT" "$OUT"
+OUT=$(ONTHERUN_WORKSPACE="$WS" "$LEDGER" "$TMP/elsewhere/p.md" 2>/dev/null)
+assert_out "  and \$ONTHERUN_WORKSPACE names the root for it" "$WANT" "$OUT"
 
 # A worktree of the workspace repo holds plans/ and none of the nested checkouts; the root
 # is the workspace repo's main working tree.

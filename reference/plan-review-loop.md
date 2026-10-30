@@ -23,16 +23,16 @@ Cheap and deterministic, and each strips a class of finding before an expensive 
 read can spend itself on it — the same trade `review-loop` step 0 makes with lint and
 tests.
 
-- **`wf-plan-cite-check.sh <plan>`** — every cited file at `origin/<default>` after a fetch,
+- **`ontherun-plan-cite-check.sh <plan>`** — every cited file at `origin/<default>` after a fetch,
   never the checkout (which routinely sits on a feature branch), and the backticked symbol or
   quoted sentence beside each citation: `MISS` when absent, `DRIFT` when the range moved (a
   warning: ranges are hints). Its header says what it pairs, skips, and when it exits 2. Shas
   in prose, the block's `sha:` and `merged:` fields, and any claim that cites no file are
   yours to resolve by hand (`git -C <repo> rev-parse <sha>`).
-- **`wf-plan-lint.sh <plan>`** — the `## State` block against `plan-format.md` (it parses,
+- **`ontherun-plan-lint.sh <plan>`** — the `## State` block against `plan-format.md` (it parses,
   every `needs` names an earlier node, each node has the fields its kind needs and a known
   status, nothing nested too deep), then the Status block against the block (the ledger is
-  `wf-plan-ledger.sh`'s rendering, the node counts the prose states, the round it says is in
+  `ontherun-plan-ledger.sh`'s rendering, the node counts the prose states, the round it says is in
   flight against `## Review history`, the `DRAFT` marker against what a draft must carry),
   then the prose for a count of the plan's own contents. What it can't see stays yours: no
   two nodes marked independent may touch the same files.
@@ -40,7 +40,7 @@ tests.
   plan says. Where the plan has a `## Derivations` section, update a row's count and date
   whenever one moves.
 
-**`wf-plan-lint.sh` also runs before every `fold-checker` spawn and before every commit of
+**`ontherun-plan-lint.sh` also runs before every `fold-checker` spawn and before every commit of
 a plan**, since a fold is where its Status checks earn their keep — it answers in under a
 second, a fold-checker pass takes minutes.
 
@@ -62,7 +62,7 @@ reasoning, which is where the findings that change the work come from.
    step 1 puts on code reviewers, for the same reason.
 
    **From round 2 on, add one more path: a diff of everything the plan changed since the
-   commit the previous round read**, written by `wf-plan-fold-diff.sh <plan> <that commit>`.
+   commit the previous round read**, written by `ontherun-plan-fold-diff.sh <plan> <that commit>`.
    That commit has to exist, so **commit the plan before every spawn** (by pathspec, in the
    plans repo — `workspace.md`) and record the commit in the round's `## Review history`
    entry. The reviewer runs its citation, external and completeness passes over the sections
@@ -207,11 +207,11 @@ and the real defect underneath survive many more whole-plan reads.
 - re-read the Status paragraph against any owner ruling the fold records, and restate nothing
   in `## Review history` that the body already says.
 
-**Then sweep it: `wf-plan-fold-diff.sh <plan> [<base-ref>]`** writes `git diff <base> --
+**Then sweep it: `ontherun-plan-fold-diff.sh <plan> [<base-ref>]`** writes `git diff <base> --
 <plan>` — `HEAD` by default; the commit before the fold once it's committed — to the scratchpad
 and prints the path. Diff the one file, never the whole plans directory: other sessions share
 the working tree, and their uncommitted edits would ride along as if they were your fold.
-**`wf-plan-fold-sweep.sh <plan> <diff>`** takes every value the fold's removed lines carried —
+**`ontherun-plan-fold-sweep.sh <plan> <diff>`** takes every value the fold's removed lines carried —
 numbers, number words with their noun, backticked names, quoted sentences, rare words — and
 lists where each still stands in the plan outside the fold's own lines, with the heading it
 sits under (hits in `## Review history` listed apart); last, it lists the fold's new lines that

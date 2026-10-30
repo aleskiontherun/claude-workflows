@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Fixtures quote code in backticks inside single quotes, on purpose.
 # shellcheck disable=SC2016
-# Tests for wf-plan-cite-check.sh. No framework: throwaway checkouts nested in a fake
+# Tests for ontherun-plan-cite-check.sh. No framework: throwaway checkouts nested in a fake
 # workspace repo, a plan written per case, assertions on stdout and exit status.
 #
-#   wf-plan-cite-check.test.sh
+#   ontherun-plan-cite-check.test.sh
 #
 # Exits 0 if every case passes, 1 otherwise. Needs git and awk.
 #
@@ -24,7 +24,7 @@
 set -u
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-CHECK="$SCRIPT_DIR/wf-plan-cite-check.sh"
+CHECK="$SCRIPT_DIR/ontherun-plan-cite-check.sh"
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -206,7 +206,7 @@ plan() { # name -> writes $PLANS/name.md from stdin, OLDSHA/MAINSHA substituted
 }
 run() { OUT=$(cd "$PLANS" && "$CHECK" "$@" 2>&1); RC=$?; }
 
-echo "wf-plan-cite-check.sh"
+echo "ontherun-plan-cite-check.sh"
 
 # -------------------------------------------------------------- a clean plan
 #
@@ -520,8 +520,8 @@ g -C "$WS" worktree add -q "$TMP/wt" -b wt
 OUT=$(cd "$TMP/wt/plans" && "$CHECK" G.md 2>&1); RC=$?
 assert_out "a plan read from a worktree of the workspace repo still finds the checkouts" \
   "OK 4 of 4 citations; DRIFT 0, MISS 0, SKIP 0" "$OUT"
-OUT=$(cd "$PLANS" && WF_WORKSPACE="$TMP/nowhere" "$CHECK" G.md 2>&1); RC=$?
-assert_eq "\$WF_WORKSPACE overrides the plan's own root: a root that is not there exits 2" 2 "$RC"
+OUT=$(cd "$PLANS" && ONTHERUN_WORKSPACE="$TMP/nowhere" "$CHECK" G.md 2>&1); RC=$?
+assert_eq "\$ONTHERUN_WORKSPACE overrides the plan's own root: a root that is not there exits 2" 2 "$RC"
 
 # ------------------------------------------------------------------------ result
 

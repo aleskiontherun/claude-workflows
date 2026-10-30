@@ -1,7 +1,7 @@
 # claude-workflows
 
 A Claude Code plugin, `ontherun`, holding skills, agents, shared references, scripts and a hook. Skills and agents
-are namespaced `ontherun:<name>`; the scripts keep a `wf-` prefix because `bin/` is on the Bash
+are namespaced `ontherun:<name>`; the scripts carry an `ontherun-` prefix because `bin/` is on the Bash
 `PATH`. `README.md` says what each piece is. This file is for working on the repo; it
 sits under `.claude/` because a `CLAUDE.md` at a plugin's root is not loaded and the validator
 warns about it.
@@ -21,7 +21,7 @@ warns about it.
 - **Agents' criteria stay in the agent files**, outside the control of the party they review;
   skills never pass review criteria in a prompt. Agents are spawned by their namespaced name,
   `ontherun:<agent>`, and the skills say so at each spawn site.
-- **The read-only agents are enforced by `hooks/wf-readonly-guard.sh`**, not by their `tools:`
+- **The read-only agents are enforced by `hooks/readonly-guard.sh`**, not by their `tools:`
   line — a `Bash(pattern)` entry there is undocumented and unenforced. Adding a command one of
   those agents needs means extending the guard's allowlist and its test together.
 - **Scripts**: every `bin/*.sh` and `hooks/*.sh` has a `.test.sh` beside it; run

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Tests for wf-plan-fold-diff.sh. No framework: a throwaway git repo with two plans, one
+# Tests for ontherun-plan-fold-diff.sh. No framework: a throwaway git repo with two plans, one
 # carrying the fold and the other a sibling session's uncommitted edit, and assertions on
 # the path printed, the file written, and what it does and does not contain.
 #
-#   wf-plan-fold-diff.test.sh
+#   ontherun-plan-fold-diff.test.sh
 #
 # Exits 0 if every case passes, 1 otherwise. Needs `git`.
 #
@@ -16,7 +16,7 @@
 set -u
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-FOLD="$SCRIPT_DIR/wf-plan-fold-diff.sh"
+FOLD="$SCRIPT_DIR/ontherun-plan-fold-diff.sh"
 
 command -v git >/dev/null || { echo "git is required" >&2; exit 2; }
 
@@ -67,7 +67,7 @@ printf '# Plan B\n\nline one\nSTRANGER\n' > "$REPO/plans/b.md"
 SCRATCH="$TMP/scratch"
 export CLAUDE_SCRATCHPAD="$SCRATCH"
 
-echo "wf-plan-fold-diff.sh"
+echo "ontherun-plan-fold-diff.sh"
 
 # ---------------------------------------------------------- the fold against HEAD
 

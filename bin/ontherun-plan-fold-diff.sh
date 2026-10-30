@@ -2,7 +2,7 @@
 # Write the diff of ONE plan -- the fold just made to it -- to a file a fold-checker or a
 # plan reviewer can be handed, and print that file's path.
 #
-#   wf-plan-fold-diff.sh <plan.md> [<base-ref>]
+#   ontherun-plan-fold-diff.sh <plan.md> [<base-ref>]
 #
 # The file holds `git diff <base-ref> -- <plan.md>`, run in the plan's own repository --
 # the plans repo (reference/workspace.md), whichever layout -- against
@@ -20,7 +20,7 @@
 # any git repository, or a ref git cannot resolve. 64 on usage.
 # reference/plan-review-loop.md says what to do with the path.
 #
-# Needs bash and git. wf-plan-fold-diff.test.sh beside this file covers each case in both
+# Needs bash and git. ontherun-plan-fold-diff.test.sh beside this file covers each case in both
 # layouts.
 
 set -u
@@ -33,7 +33,7 @@ plan=$1
 base=${2:-HEAD}
 
 if [ ! -f "$plan" ]; then
-  printf 'wf-plan-fold-diff: no such file: %s\n' "$plan" >&2
+  printf 'ontherun-plan-fold-diff: no such file: %s\n' "$plan" >&2
   exit 1
 fi
 # Resolve the plan to an absolute path once, then run every git command in its own
@@ -43,11 +43,11 @@ dir=$(cd -- "$(dirname -- "$plan")" && pwd) || exit 1
 abs=$dir/$(basename -- "$plan")
 
 git -C "$dir" rev-parse --show-toplevel >/dev/null 2>&1 \
-  || { printf 'wf-plan-fold-diff: %s is not inside a git repository\n' "$plan" >&2; exit 1; }
+  || { printf 'ontherun-plan-fold-diff: %s is not inside a git repository\n' "$plan" >&2; exit 1; }
 git -C "$dir" ls-files --error-unmatch -- "$abs" >/dev/null 2>&1 \
-  || { printf 'wf-plan-fold-diff: %s is not tracked; a fold needs a committed plan to diff against\n' "$plan" >&2; exit 1; }
+  || { printf 'ontherun-plan-fold-diff: %s is not tracked; a fold needs a committed plan to diff against\n' "$plan" >&2; exit 1; }
 git -C "$dir" rev-parse --verify --quiet "$base^{commit}" >/dev/null \
-  || { printf 'wf-plan-fold-diff: cannot resolve %s in %s\n' "$base" "$dir" >&2; exit 1; }
+  || { printf 'ontherun-plan-fold-diff: cannot resolve %s in %s\n' "$base" "$dir" >&2; exit 1; }
 
 out_dir=${CLAUDE_SCRATCHPAD:-/tmp}
 mkdir -p -- "$out_dir" || exit 1
@@ -60,7 +60,7 @@ if ! git -C "$dir" diff "$base" -- "$abs" > "$tmp"; then
 fi
 if [ ! -s "$tmp" ]; then
   rm -f -- "$tmp"
-  printf 'wf-plan-fold-diff: no changes to %s against %s; if the fold is already committed, pass the ref before it (HEAD~1)\n' \
+  printf 'ontherun-plan-fold-diff: no changes to %s against %s; if the fold is already committed, pass the ref before it (HEAD~1)\n' \
     "$plan" "$base" >&2
   exit 1
 fi
@@ -70,5 +70,5 @@ out=$out_dir/fold-$name-$(date +%Y%m%dT%H%M%S).diff
 mv -- "$tmp" "$out" || exit 1
 
 read -r added deleted _ < <(git -C "$dir" diff --numstat "$base" -- "$abs")
-printf 'wf-plan-fold-diff: %s against %s: +%s -%s lines\n' "$plan" "$base" "$added" "$deleted" >&2
+printf 'ontherun-plan-fold-diff: %s against %s: +%s -%s lines\n' "$plan" "$base" "$added" "$deleted" >&2
 printf '%s\n' "$out"

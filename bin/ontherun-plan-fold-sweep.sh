@@ -2,9 +2,9 @@
 # Sweep one plan for the stale echoes of a fold: every value the fold's diff removed that
 # still stands somewhere in the plan the fold did not reach.
 #
-#   wf-plan-fold-sweep.sh [--all] [--rare N] <plan.md> <fold.diff>
+#   ontherun-plan-fold-sweep.sh [--all] [--rare N] <plan.md> <fold.diff>
 #
-# <fold.diff> is the file wf-plan-fold-diff.sh writes -- `git diff <base> -- <plan>`, one
+# <fold.diff> is the file ontherun-plan-fold-diff.sh writes -- `git diff <base> -- <plan>`, one
 # file -- and <plan.md> is that plan as it stands after the fold. The terms come from
 # the diff's removed lines:
 #
@@ -13,7 +13,7 @@
 #             only inside a pair; on their own they match everything
 #   numword   zero .. twenty, thirty .. thousand, first .. twelfth, both, twice. A fold
 #             that appends "(6)" to a list of five leaves "five rules" stale and removes
-#             nothing to name it; that is wf-plan-lint.sh's self-count check, which fails
+#             nothing to name it; that is ontherun-plan-lint.sh's self-count check, which fails
 #             a plan on such a sentence before any spawn. A bare number word is not a
 #             term: it fires on every list the fold did not touch
 #   pair      a number or number word with the word beside it, either side, when that
@@ -81,9 +81,9 @@
 # reader; both otherwise decide what to grep for from memory, which misses the old
 # value standing a hundred lines below the edit. What it cannot see is a rule added
 # beside a sentence it contradicts: a fold that only adds leaves nothing to sweep for,
-# and that stays the checker's to read and wf-plan-lint.sh's to check.
+# and that stays the checker's to read and ontherun-plan-lint.sh's to check.
 #
-# Needs bash and perl (macOS ships it). wf-plan-fold-sweep.test.sh beside this file
+# Needs bash and perl (macOS ships it). ontherun-plan-fold-sweep.test.sh beside this file
 # builds a plan and its fold in a throwaway repo and pins every shape above.
 
 set -u
@@ -110,11 +110,11 @@ diff=$2
 
 for f in "$plan" "$diff"; do
   if [ ! -f "$f" ] || [ ! -r "$f" ]; then
-    printf 'wf-plan-fold-sweep: cannot read %s\n' "$f" >&2
+    printf 'ontherun-plan-fold-sweep: cannot read %s\n' "$f" >&2
     exit 2
   fi
 done
-command -v perl >/dev/null || { printf 'wf-plan-fold-sweep: perl is required\n' >&2; exit 2; }
+command -v perl >/dev/null || { printf 'ontherun-plan-fold-sweep: perl is required\n' >&2; exit 2; }
 
 exec perl -CSDA - "$plan" "$diff" "$all" "$rare" <<'PERL'
 use strict;
@@ -127,7 +127,7 @@ my $COMMON_NUMWORD = 15; # the same bound for a number word, whose survivors are
                          # other counts, which would fill the report while the one
                          # stale count sits among them
 
-sub fail { print STDERR "wf-plan-fold-sweep: $_[0]\n"; exit 2 }
+sub fail { print STDERR "ontherun-plan-fold-sweep: $_[0]\n"; exit 2 }
 
 sub slurp {
   my $p = shift;
@@ -152,7 +152,7 @@ pop @diff if @diff && $diff[-1] eq '';
 # is refused rather than swept against the wrong text.
 my @files = map { /^\+\+\+ (?:b\/)?(.*)$/ ? $1 : () } @diff;
 fail("$diff_path is not a unified diff of one file") unless @files;
-fail(sprintf('%s carries %d files; hand over wf-plan-fold-diff.sh\'s diff of the one plan', $diff_path, scalar @files))
+fail(sprintf('%s carries %d files; hand over ontherun-plan-fold-diff.sh\'s diff of the one plan', $diff_path, scalar @files))
   if @files > 1;
 (my $plan_base = $plan_path) =~ s{.*/}{};
 (my $diff_base = $files[0]) =~ s{.*/}{};
@@ -163,7 +163,7 @@ sub check_line {
   my ($ln, $text) = @_;
   my $have = $ln >= 1 && $ln <= @plan ? $plan[$ln - 1] : undef;
   return if defined $have && $have eq $text;
-  fail("the diff does not match $plan_path at line $ln; the plan has changed since it was written -- regenerate it with wf-plan-fold-diff.sh");
+  fail("the diff does not match $plan_path at line $ln; the plan has changed since it was written -- regenerate it with ontherun-plan-fold-diff.sh");
 }
 my $i = 0;
 while ($i < @diff) {
@@ -244,7 +244,7 @@ sub report_flagged {
 my $removed = 0;
 $removed += @{ $_->[0] } for @hunks;
 if (!$removed) {
-  printf "wf-plan-fold-sweep: %d hunk%s, nothing removed; a fold that only adds leaves no old value to sweep for -- wf-plan-lint.sh and the checker's own reading are its checks\n",
+  printf "ontherun-plan-fold-sweep: %d hunk%s, nothing removed; a fold that only adds leaves no old value to sweep for -- ontherun-plan-lint.sh and the checker's own reading are its checks\n",
     scalar @hunks, @hunks == 1 ? '' : 's';
   exit(report_flagged() ? 1 : 0);
 }
@@ -513,7 +513,7 @@ for my $h (@hunks) {
   for my $k (grep { /^word\t/ } keys %$w) { $term{$k} = 1 if $w->{$k} > ($a->{$k} // 0) }
 }
 if (!%term) {
-  printf "wf-plan-fold-sweep: %d hunk%s, %d removed line%s, 0 terms; every removed value is re-stated in its own hunk\n",
+  printf "ontherun-plan-fold-sweep: %d hunk%s, %d removed line%s, 0 terms; every removed value is re-stated in its own hunk\n",
     scalar @hunks, @hunks == 1 ? '' : 's', $removed, $removed == 1 ? '' : 's';
   exit(report_flagged() ? 1 : 0);
 }
@@ -578,7 +578,7 @@ my $by_rank = sub {
 my @with = sort $by_rank grep { @{ $body{$_} } } keys %term;
 my @without = sort $by_rank grep { !@{ $body{$_} } } keys %term;
 
-printf "wf-plan-fold-sweep: %d hunk%s, %d removed line%s, %d term%s; %d with survivors outside ## Review history\n",
+printf "ontherun-plan-fold-sweep: %d hunk%s, %d removed line%s, %d term%s; %d with survivors outside ## Review history\n",
   scalar @hunks, @hunks == 1 ? '' : 's', $removed, $removed == 1 ? '' : 's',
   scalar keys %term, keys(%term) == 1 ? '' : 's', scalar @with;
 

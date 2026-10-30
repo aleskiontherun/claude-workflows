@@ -10,6 +10,6 @@ claude plugin eval . --runs 1 --ablation none          # quick, one arm
 claude plugin eval . --trust-plugin --json results.json # the CI form; see .github/workflows
 ```
 
-The read-only guarantee for the review agents is tested by `hooks/wf-readonly-guard.test.sh`,
+The read-only guarantee for the review agents is tested by `hooks/readonly-guard.test.sh`,
 not here: an eval that spawns those agents needs `Agent` and `Bash` grants and a repository
 to review, which costs more than a hook test.

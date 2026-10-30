@@ -34,9 +34,9 @@ it to go stale.
 
 The scripts under the plugin's `bin/` — the plugin root is the parent of this file's
 `reference/` directory — resolve the root from the plan path they are given:
-`WF_WORKSPACE` when set, else the parent of the nearest enclosing directory named `plans` (from
+`ONTHERUN_WORKSPACE` when set, else the parent of the nearest enclosing directory named `plans` (from
 a worktree of a workspace repo, in its main working tree), else the plan's git top level. **With
-a plans directory named anything else, set `WF_WORKSPACE` to the root** when running them. They
+a plans directory named anything else, set `ONTHERUN_WORKSPACE` to the root** when running them. They
 read the node checkouts under that root, so ledger links and the lint's ledger check need those
 checkouts present.
 

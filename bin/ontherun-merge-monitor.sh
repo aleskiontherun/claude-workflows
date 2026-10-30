@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Watch one repo's plan-node merge queue and emit a line only when something changes.
 #
-#   wf-merge-monitor.sh [--once] <repo> <branch> [<branch> ...]
+#   ontherun-merge-monitor.sh [--once] <repo> <branch> [<branch> ...]
 #
-# <repo> is a checkout: an absolute path, or one relative to $WF_WORKSPACE when that is
+# <repo> is a checkout: an absolute path, or one relative to $ONTHERUN_WORKSPACE when that is
 # set, else to the current directory. Pass an absolute path when arming a session-length
 # monitor -- a cwd that drifts must not point it at another checkout. The branches are
 # the plan's still-eligible branches in that repo, IN QUEUE ORDER -- the order the
@@ -39,7 +39,7 @@
 # queue works this way -- only the head is prepared for merge, `tip` shows pushes the
 # other fields cannot -- is the conduct skill's to say and is not repeated here.
 #
-# Needs bash, gh and jq. wf-merge-monitor.test.sh beside this file covers every state
+# Needs bash, gh and jq. ontherun-merge-monitor.test.sh beside this file covers every state
 # above against a stubbed `gh` that runs this script's own --jq expressions.
 
 set -u
@@ -58,8 +58,8 @@ wf_here() { # this script's directory, symlinks resolved
   done
   cd -P -- "$(dirname -- "$s")" && pwd
 }
-# shellcheck source=SCRIPTDIR/wf-lib.sh
-. "$(wf_here)/wf-lib.sh" || exit 1
+# shellcheck source=SCRIPTDIR/ontherun-lib.sh
+. "$(wf_here)/ontherun-lib.sh" || exit 1
 
 once=false
 [ "${1:-}" = "--once" ] && { once=true; shift; }
@@ -74,7 +74,7 @@ BRANCHES=("$@")
 
 case $repo in
   /*) repo_path=$repo ;;
-  *)  repo_path=${WF_WORKSPACE:+$WF_WORKSPACE/}$repo ;;
+  *)  repo_path=${ONTHERUN_WORKSPACE:+$ONTHERUN_WORKSPACE/}$repo ;;
 esac
 cd -- "$repo_path" || exit 1
 
@@ -89,7 +89,7 @@ if slug=$(wf_slug .); then R=(-R "$slug"); fi
 # that a child surviving the kill cannot hold the caller's $(...) open.
 gh_bounded() {
   local f pid wd rc
-  f=$(mktemp "${TMPDIR:-/tmp}/wf-merge-monitor.XXXXXX") || return 1
+  f=$(mktemp "${TMPDIR:-/tmp}/ontherun-merge-monitor.XXXXXX") || return 1
   "$@" >"$f" 2>&1 &
   pid=$!
   (

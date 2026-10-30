@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Render a plan's Status ledger from its `## State` block.
 #
-#   wf-plan-ledger.sh <plan.md> [--write]
+#   ontherun-plan-ledger.sh <plan.md> [--write]
 #
 # Prints the ledger -- one bullet per node, in block order, under the plan's phase
 # headings -- or, with --write, splices it into the plan in place of the ledger that is
@@ -15,7 +15,7 @@
 # ``[`abc1234`](https://github.com/o/n/commit/abc1234)``. With no checkout there, or a
 # remote elsewhere, they render unlinked -- `#12`, `` `abc1234` `` -- and a note goes to
 # stderr. `repo: .` is the workspace root itself (the single-repo layout). The root is
-# $WF_WORKSPACE, else the parent of the nearest ancestor directory named `plans`, else the
+# $ONTHERUN_WORKSPACE, else the parent of the nearest ancestor directory named `plans`, else the
 # plan's git toplevel (reference/workspace.md).
 #
 # Phase headings come from the block's `# ---- <name> ----` comments: each one groups
@@ -43,7 +43,7 @@
 # `**Status:` line, or a node whose status needs a field it lacks (an `open` node with
 # no `pr`, a `merged` one with no `sha`); 64 usage.
 #
-# Needs bash, awk and git. wf-plan-ledger.test.sh beside this file covers every status,
+# Needs bash, awk and git. ontherun-plan-ledger.test.sh beside this file covers every status,
 # the quoting forms, the links in both layouts, the heading rules and the --write splice.
 
 set -u
@@ -56,8 +56,8 @@ wf_here() { # this script's directory, symlinks resolved
   done
   cd -P -- "$(dirname -- "$s")" && pwd
 }
-# shellcheck source=SCRIPTDIR/wf-lib.sh
-. "$(wf_here)/wf-lib.sh" || exit 1
+# shellcheck source=SCRIPTDIR/ontherun-lib.sh
+. "$(wf_here)/ontherun-lib.sh" || exit 1
 
 usage() { printf 'usage: %s <plan.md> [--write]\n' "${0##*/}" >&2; exit 64; }
 
@@ -71,7 +71,7 @@ for arg in "$@"; do
   esac
 done
 [ -n "$plan" ] || usage
-[ -r "$plan" ] || { printf 'wf-plan-ledger: %s: cannot read\n' "$plan" >&2; exit 1; }
+[ -r "$plan" ] || { printf 'ontherun-plan-ledger: %s: cannot read\n' "$plan" >&2; exit 1; }
 
 # The base URL of every repo the block names, as `repo<TAB>url` lines for the awk below.
 # A repo with no GitHub checkout under the root gets no line; the awk leaves its links
@@ -136,7 +136,7 @@ function sha_link(repo, sha,   u) {
   u = url(repo); return u == "" ? "`" sha "`" : "[`" sha "`](" u "/commit/" sha ")"
 }
 
-function fail(k, msg) { ERR[++nerr] = "wf-plan-ledger: " FILENAME ": node " ID[k] ": " msg }
+function fail(k, msg) { ERR[++nerr] = "ontherun-plan-ledger: " FILENAME ": node " ID[k] ": " msg }
 
 function needs_list(k,   raw, parts, np, i, out) {
   raw = trim(val(k, "needs"))
@@ -240,9 +240,9 @@ in_yaml && /^```[ \t]*$/ { in_yaml = 0; in_state = 0; block_seen = 1; next }
 in_yaml { parse($0) }
 
 END {
-  if (!block_seen) { print "wf-plan-ledger: " FILENAME ": no `## State` block" > "/dev/stderr"; exit 1 }
-  if (n == 0) { print "wf-plan-ledger: " FILENAME ": the block has no nodes" > "/dev/stderr"; exit 1 }
-  if (!status_line) { print "wf-plan-ledger: " FILENAME ": no `**Status:` line" > "/dev/stderr"; exit 1 }
+  if (!block_seen) { print "ontherun-plan-ledger: " FILENAME ": no `## State` block" > "/dev/stderr"; exit 1 }
+  if (n == 0) { print "ontherun-plan-ledger: " FILENAME ": the block has no nodes" > "/dev/stderr"; exit 1 }
+  if (!status_line) { print "ontherun-plan-ledger: " FILENAME ": no `**Status:` line" > "/dev/stderr"; exit 1 }
   lim = first_h2 ? first_h2 : NR + 1
   BULLET = "^- \\*\\*[a-z][a-z0-9-]*-[0-9]+[a-z]*\\*\\* "
 
@@ -280,7 +280,7 @@ END {
   }
   if (nerr) { for (i = 1; i <= nerr; i++) print ERR[i] > "/dev/stderr"; exit 1 }
   for (r in BARE)
-    print "wf-plan-ledger: no GitHub checkout for `" r "` under " ENVIRON["WF_LEDGER_ROOT"] "; its links are left out" > "/dev/stderr"
+    print "ontherun-plan-ledger: no GitHub checkout for `" r "` under " ENVIRON["WF_LEDGER_ROOT"] "; its links are left out" > "/dev/stderr"
 
   if (mode == "print") { for (i = 1; i <= m; i++) print OUT[i]; exit 0 }
 

@@ -73,7 +73,7 @@ A live plan has the same shape with each node's actual state:
 ````
 
 **The ledger of a plan with a `## State` block is generated, never written.**
-`bin/wf-plan-ledger.sh <plan> --write` under the plugin root — the parent of this file's
+`bin/ontherun-plan-ledger.sh <plan> --write` under the plugin root — the parent of this file's
 `reference/` directory — renders it from the block — one line
 per node, in block order, with the wording above and `blocked: <reason>`,
 `draft, waiting on the human`, `dropped` and `done` for the other statuses — and replaces
@@ -116,7 +116,7 @@ are all `pending` and whose Status names no such exit back to review.
   closing out as shipped, corrected by `verify-plan` itself once the user has seen it.
 
 **A block that disagrees with the tree is a finding, not corruption** — the block is a cache,
-the tree is the truth. A ledger that differs from `wf-plan-ledger.sh`'s rendering of its own
+the tree is the truth. A ledger that differs from `ontherun-plan-ledger.sh`'s rendering of its own
 block was hand-edited or left behind: correct the block, then regenerate.
 
 ## The state block
@@ -341,7 +341,7 @@ be a shell alias. Rows go stale on purpose: update them when a round re-derives.
 
 **A plan never counts its own contents.** "Five rules", "the six owner decisions", "three
 phases": each goes stale the moment a fold adds one, and adds nothing the noun didn't say —
-write *the rules below*, *the owner decisions*. `wf-plan-lint.sh`'s `self-count` check fails a
+write *the rules below*, *the owner decisions*. `ontherun-plan-lint.sh`'s `self-count` check fails a
 plan on the pattern outside `## Review history`. Exempt: the Status roster ("of its N nodes, P
 are PRs"), which the lint verifies against the block; a numbered item and its continuation
 lines (an owner decision is preserved verbatim and may count what it ruled on); `delivered:`
@@ -360,7 +360,7 @@ introduces fresh wrong numbers. So write `restoreSession()`, `the "Retention" se
 give a range only where it helps find something long — saying once, in the plan, that ranges
 are hints. **Where a citation and a name disagree, the name wins.**
 
-`bin/wf-plan-cite-check.sh <plan>` under the plugin root sweeps every citation against
+`bin/ontherun-plan-cite-check.sh <plan>` under the plugin root sweeps every citation against
 `origin/<default>` — the file, the symbol or quoted sentence beside it, how far the range
 drifted — and can't see a claim that cites no file.
 

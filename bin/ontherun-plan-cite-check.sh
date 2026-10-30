@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Sweep one plan's file-and-line citations against its node repos' default branches.
 #
-#   wf-plan-cite-check.sh [--drift N] [--strict] <plan.md>
+#   ontherun-plan-cite-check.sh [--drift N] [--strict] <plan.md>
 #
 # Three citation shapes, all inside backticks, the way plans write them:
 #
@@ -64,14 +64,14 @@
 # future, and is not looked for; repo names and file names are not symbols. What none of
 # this can check is a sentence that cites no file -- that stays the reviewer's.
 #
-# The workspace root is $WF_WORKSPACE, else the parent of the nearest ancestor directory
+# The workspace root is $ONTHERUN_WORKSPACE, else the parent of the nearest ancestor directory
 # named `plans`, else the plan's git toplevel; a linked worktree of a workspace repo
 # resolves to its main working tree, where the nested checkouts are
 # (reference/workspace.md). Node repos are the git checkouts under it --
 # not the plans repo -- plus the root itself when it is a code checkout with `plans/`
 # nested inside it (`repo: .`).
 #
-# Needs bash, git and awk. wf-plan-cite-check.test.sh beside this file runs it against
+# Needs bash, git and awk. ontherun-plan-cite-check.test.sh beside this file runs it against
 # throwaway repos in both layouts.
 
 set -u
@@ -106,8 +106,8 @@ wf_here() { # this script's directory, symlinks resolved
   done
   cd -P -- "$(dirname -- "$s")" && pwd
 }
-# shellcheck source=SCRIPTDIR/wf-lib.sh
-. "$(wf_here)/wf-lib.sh" || exit 2
+# shellcheck source=SCRIPTDIR/ontherun-lib.sh
+. "$(wf_here)/ontherun-lib.sh" || exit 2
 
 root=$(wf_root "$plan") || { printf 'cannot resolve the workspace root for %s\n' "$plan" >&2; exit 2; }
 plans_dir=$(wf_plans_dir "$plan") || exit 2

@@ -130,7 +130,7 @@ Resolve the date with `date +%Y-%m-%d`.
 **Take the shape from `plan-format.md`, not from a plan on disk** — older plans in `done/` may
 predate it. Keep the sentence naming the exit that promoted the plan. On a plan with a
 `## State` block the ledger is only ever regenerated —
-`${CLAUDE_PLUGIN_ROOT}/bin/wf-plan-ledger.sh <plan> --write` — and only from a block that matches what
+`${CLAUDE_PLUGIN_ROOT}/bin/ontherun-plan-ledger.sh <plan> --write` — and only from a block that matches what
 you found. Where the block disagrees with the tree, that is the finding: show it at §7. For a
 **Shipped** plan, with the user's go-ahead, correct the block's `status`, `pr`, `sha` and
 `merged` to the tree and regenerate — nothing will conduct it again. For any other verdict,

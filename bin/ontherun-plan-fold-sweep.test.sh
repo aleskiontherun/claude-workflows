@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Tests for wf-plan-fold-sweep.sh. No framework: a throwaway git repo holding one plan, a
-# fold applied to it, `git diff` for the diff -- the same command wf-plan-fold-diff.sh runs
+# Tests for ontherun-plan-fold-sweep.sh. No framework: a throwaway git repo holding one plan, a
+# fold applied to it, `git diff` for the diff -- the same command ontherun-plan-fold-diff.sh runs
 # -- and assertions on the report and the exit status.
 #
-#   wf-plan-fold-sweep.test.sh
+#   ontherun-plan-fold-sweep.test.sh
 #
 # Exits 0 if every case passes, 1 otherwise. Needs `git` and `perl`.
 #
@@ -20,8 +20,8 @@
 set -u
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-SWEEP="$SCRIPT_DIR/wf-plan-fold-sweep.sh"
-FOLD="$SCRIPT_DIR/wf-plan-fold-diff.sh"
+SWEEP="$SCRIPT_DIR/ontherun-plan-fold-sweep.sh"
+FOLD="$SCRIPT_DIR/ontherun-plan-fold-diff.sh"
 
 command -v git >/dev/null || { echo "git is required" >&2; exit 2; }
 command -v perl >/dev/null || { echo "perl is required" >&2; exit 2; }
@@ -194,14 +194,14 @@ write_folded
 DIFF="$TMP/fold.diff"
 git -C "$REPO" diff HEAD -- plans/a.md > "$DIFF"
 
-echo "wf-plan-fold-sweep.sh"
+echo "ontherun-plan-fold-sweep.sh"
 
 # ------------------------------------------------------------ the fold, every shape
 
 run "$PLAN" "$DIFF"
 assert_eq "a fold with survivors: exit 1" 1 "$RC"
 assert_eq "  and nothing on stderr" "" "$ERR"
-assert_has "  the header counts the hunks and the removed lines" "wf-plan-fold-sweep: 4 hunks, 6 removed lines," "$OUT"
+assert_has "  the header counts the hunks and the removed lines" "ontherun-plan-fold-sweep: 4 hunks, 6 removed lines," "$OUT"
 assert_has "  and the terms with survivors" "; 8 with survivors outside ## Review history" "$OUT"
 
 assert_has "numword: the old count, once wrapped and once bold, plus the history line" \
@@ -260,16 +260,16 @@ else
   bad "  and the word tier comes after the rest, whatever its count" "word at line $word_at, numword at line $first"
 fi
 
-# --------------------------------------------------- the file wf-plan-fold-diff.sh writes
+# --------------------------------------------------- the file ontherun-plan-fold-diff.sh writes
 
 if [ -x "$FOLD" ]; then
   SCRATCH="$TMP/scratch"
   FROM_SCRIPT=$(CLAUDE_SCRATCHPAD="$SCRATCH" "$FOLD" "$PLAN" 2>/dev/null)
   run "$PLAN" "$FROM_SCRIPT"
-  assert_eq "wf-plan-fold-diff.sh's file is accepted as-is" 1 "$RC"
+  assert_eq "ontherun-plan-fold-diff.sh's file is accepted as-is" 1 "$RC"
   assert_has "  with the same survivors" "; 8 with survivors outside ## Review history" "$OUT"
 else
-  bad "wf-plan-fold-diff.sh's file is accepted as-is" "wf-plan-fold-diff.sh not found beside this test"
+  bad "ontherun-plan-fold-diff.sh's file is accepted as-is" "ontherun-plan-fold-diff.sh not found beside this test"
 fi
 
 # ------------------------------------------------------- survivors only in history
@@ -380,7 +380,7 @@ assert_lacks "a hyphenated lowercase name is a reference, not a term" "fold-chec
 
 # ------------------------------------------------------------- an appended enumerator
 #
-# Appending to a list is wf-plan-lint.sh's business (the self-count check); here it is a
+# Appending to a list is ontherun-plan-lint.sh's business (the self-count check); here it is a
 # fold that only adds, and a list that is merely re-wrapped yields nothing.
 
 write_base
@@ -600,7 +600,7 @@ printf 'line two\n' >> "$REPO/plans/b.md"
 git -C "$REPO" diff HEAD -- plans/ > "$TMP/two.diff"
 run "$PLAN" "$TMP/two.diff"
 assert_eq "a diff of two files: exit 2" 2 "$RC"
-assert_has "  says how many and whose diff to hand over" "carries 2 files; hand over wf-plan-fold-diff.sh's diff" "$ERR"
+assert_has "  says how many and whose diff to hand over" "carries 2 files; hand over ontherun-plan-fold-diff.sh's diff" "$ERR"
 git -C "$REPO" diff HEAD -- plans/b.md > "$TMP/other.diff"
 run "$PLAN" "$TMP/other.diff"
 assert_eq "a diff of a different file: exit 2" 2 "$RC"

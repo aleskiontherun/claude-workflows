@@ -1,10 +1,10 @@
 # shellcheck shell=bash
-# Shared by the wf- scripts beside this file; sourced, never run. It resolves the terms
+# Shared by the ontherun- scripts beside this file; sourced, never run. It resolves the terms
 # reference/workspace.md defines, so every script answers "which directory is
 # the workspace root", "which ref is this repo's default branch" and "which GitHub repo is
 # this checkout" the same way.
 #
-#   . "$(wf_here)/wf-lib.sh"      -- see any wf- script for the two-line preamble
+#   . "$(wf_here)/ontherun-lib.sh"      -- see any wf- script for the two-line preamble
 #
 # Every function prints its answer and returns non-zero when it has none; none of them
 # exits, so a caller decides what a missing answer means.
@@ -26,7 +26,7 @@ wf_main_tree() { # dir -> main working tree
 }
 
 # The workspace root for a plan file, as an absolute physical path:
-#   1. $WF_WORKSPACE, when set;
+#   1. $ONTHERUN_WORKSPACE, when set;
 #   2. else the parent of the nearest ancestor directory named `plans` (a plan in
 #      `plans/done/` resolves the same as one in `plans/`);
 #   3. else the plan's git toplevel;
@@ -35,8 +35,8 @@ wf_main_tree() { # dir -> main working tree
 # repo's main working tree: the nested checkouts are untracked, so a worktree has none.
 wf_root() { # plan -> root
   local d root up top
-  if [ -n "${WF_WORKSPACE:-}" ]; then
-    (cd -- "$WF_WORKSPACE" 2>/dev/null && pwd -P) || return 1
+  if [ -n "${ONTHERUN_WORKSPACE:-}" ]; then
+    (cd -- "$ONTHERUN_WORKSPACE" 2>/dev/null && pwd -P) || return 1
     return 0
   fi
   d=$(cd -- "$(dirname -- "$1")" 2>/dev/null && pwd -P) || return 1

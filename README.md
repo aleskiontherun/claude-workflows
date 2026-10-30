@@ -13,8 +13,7 @@ part. The orchestrating session only routes.
 
 Everything ships as one plugin, `ontherun`, so skills are `/ontherun:implement` and agents are
 `ontherun:reviewer`. The namespace is what keeps them distinct from built-in commands
-(`/code-review`) and other plugins' agents (`code-reviewer`). The scripts in `bin/` keep a
-`wf-` prefix because that directory goes on the Bash `PATH`.
+(`/code-review`) and other plugins' agents (`code-reviewer`). The The scripts in `bin/` carry an `ontherun-` prefix because that directory goes on the Bash `PATH`.
 
 ## What's inside
 
@@ -54,11 +53,13 @@ share; nothing restates them.
 | `plan-review-loop.md` | the loop `plan` and `conduct` run over plans |
 | `implementer-protocol.md` | everything an implementer agent does |
 
-**Hook** in `hooks/` — `wf-readonly-guard.sh` runs before every Bash call and, when the
+**Hook** in `hooks/` — `readonly-guard.sh` runs before every Bash call and, when the
 caller is one of the five review agents (`reviewer`, `validator`, `plan-reviewer`,
 `plan-validator`, `fold-checker`), allows only read-only forms of `git`, `gh`, `curl`,
-`find` and a list of plain filters, denying anything else with the reason. Its header lists
-the allowlist; `wf-readonly-guard.test.sh` pins it.
+`find`, `sed`, `awk` and a list of plain filters, denying anything else with the reason —
+including the environment variables and `git -c` keys a call may set, since a pager or an
+external diff is a program too. Its header lists the allowlist; `readonly-guard.test.sh`
+pins it.
 
 **Scripts** in `bin/` — deterministic checks the skills run instead of spending a reviewer
 round on them. Each has a header with usage and exit codes, and a `.test.sh` beside it. The
@@ -67,22 +68,22 @@ skills call them by their full path under the plugin root; `bin/` is also on the
 
 | Script | Does |
 | --- | --- |
-| `wf-plan-lint.sh <plan>` | checks the `## State` block, the Status block against it, and self-counts in the prose |
-| `wf-plan-ledger.sh <plan> [--write]` | renders the Status ledger from the `## State` block |
-| `wf-plan-cite-check.sh [--drift N] [--strict] <plan>` | checks every `file:line` citation and the symbol beside it against `origin/<default>` |
-| `wf-plan-fold-diff.sh <plan> [<base>]` | writes the diff of one plan edit for `fold-checker` |
-| `wf-plan-fold-sweep.sh [--all] [--rare N] <plan> <diff>` | lists where values an edit removed still stand in the plan |
-| `wf-merge-monitor.sh [--once] <repo> <branch>…` | polls a repo's PRs and prints the merge-queue head when it changes |
-| `wf-lib.sh` | shared functions the scripts source: workspace root, plans directory, default branch, GitHub slug |
+| `ontherun-plan-lint.sh <plan>` | checks the `## State` block, the Status block against it, and self-counts in the prose |
+| `ontherun-plan-ledger.sh <plan> [--write]` | renders the Status ledger from the `## State` block |
+| `ontherun-plan-cite-check.sh [--drift N] [--strict] <plan>` | checks every `file:line` citation and the symbol beside it against `origin/<default>` |
+| `ontherun-plan-fold-diff.sh <plan> [<base>]` | writes the diff of one plan edit for `fold-checker` |
+| `ontherun-plan-fold-sweep.sh [--all] [--rare N] <plan> <diff>` | lists where values an edit removed still stand in the plan |
+| `ontherun-merge-monitor.sh [--once] <repo> <branch>…` | polls a repo's PRs and prints the merge-queue head when it changes |
+| `ontherun-lib.sh` | shared functions the scripts source: workspace root, plans directory, default branch, GitHub slug |
 
 The scripts find the workspace root from the plan path you give them; with a plans directory
-named anything other than `plans`, set `WF_WORKSPACE` to the root.
+named anything other than `plans`, set `ONTHERUN_WORKSPACE` to the root.
 
 ## Install
 
 Requirements: a current Claude Code; `git` 2.31+; the GitHub CLI `gh`, authenticated (`gh auth
 status`); `jq`; and for the scripts and the hook `bash` 3.2+, `awk`, `perl` and `ruby`
-(`wf-plan-lint.sh`) — all present on a stock macOS with Homebrew's `gh` and `jq`.
+(`ontherun-plan-lint.sh`) — all present on a stock macOS with Homebrew's `gh` and `jq`.
 
 **From GitHub**, pinned to the version in `.claude-plugin/plugin.json` and upgraded with
 `claude plugin update ontherun@claude-workflows`:
@@ -270,12 +271,12 @@ with your go-ahead rewrites the Status and moves the plan to `plans/done/`.
 
 - **Read-only agents are enforced by the hook**, not by their `tools:` line — a `Bash(pattern)`
   entry there is undocumented and unenforced, so the agents get plain `Bash` and
-  `hooks/wf-readonly-guard.sh` decides per call. `verifier` and the implementers run the
+  `hooks/readonly-guard.sh` decides per call. `verifier` and the implementers run the
   project's own checks, so they are not guarded; the verifier's prose keeps it read-only.
 - **Claude Code tools the skills rely on**: `AskUserQuestion` (`plan`, `conduct`),
   `SendMessage` and `TaskStop` (`conduct`, to resume implementers and replace monitors),
   and `Monitor` with `PushNotification` for the merge queue — without those two, run
-  `wf-merge-monitor.sh --once` whenever you want the queue's state. A `Monitor` expires after
+  `ontherun-merge-monitor.sh --once` whenever you want the queue's state. A `Monitor` expires after
   at most 30 minutes; `conduct` re-arms it. The desktop app's session tools are optional,
   for hand-offs.
 - **Model pins use family aliases** (`opus`, `sonnet`), so they track the newest model in each
@@ -296,7 +297,7 @@ This kit is those workflows made project-agnostic. If you used them, the mapping
 | `opendiving-plan`, `opendiving-conduct`, `opendiving-verify-plan`, `opendiving-product-analysis` | `plan`, `conduct`, `verify-plan`, `product-analysis` |
 | `reviewer`, `validator`, `plan-reviewer`, `plan-validator`, `fold-checker`, `verifier`, `implementer`, `implementer-high` | the same names, under the `ontherun:` namespace |
 | `plans/README.md`, `claude/plan-review-loop.md`, `implementer-protocol.md` | `reference/plan-format.md`, `reference/plan-review-loop.md`, `reference/implementer-protocol.md` |
-| `claude/bin/plan-*.sh`, `merge-monitor.sh` | `bin/wf-plan-*.sh`, `bin/wf-merge-monitor.sh` |
+| `claude/bin/plan-*.sh`, `merge-monitor.sh` | `bin/ontherun-plan-*.sh`, `bin/ontherun-merge-monitor.sh` |
 | the umbrella repo | a workspace repo (`reference/workspace.md`) |
 
 The symlinks that install made are removed by this repo's `install.sh`; the plugin replaces

@@ -2,7 +2,7 @@
 # Check one plan against the shape reference/plan-format.md defines: the
 # `## State` block, the Status ledger and prose that mirror it, and the DRAFT marker.
 #
-#   wf-plan-lint.sh <plan.md>
+#   ontherun-plan-lint.sh <plan.md>
 #
 # Prints `FAIL <check>: <what>`, one line per failure, then a summary line naming the
 # first failing check, and exits 1. Exits 0 with a one-line summary when everything holds.
@@ -24,7 +24,7 @@
 #   status       one of the format's eight; `done` only on setup/manual, `merged`, `open`
 #                and `draft-pr` only on PR nodes
 #   ledger       the `- **<id>**` bullets between the `**Status:` line and `## State` are
-#                the block's ids, in the block's order -- and, when wf-plan-ledger.sh sits
+#                the block's ids, in the block's order -- and, when ontherun-plan-ledger.sh sits
 #                beside this script, the ledger is byte for byte what it renders from the
 #                block: the ledger is generated, never written. That script's own refusals
 #                (a `merged` node with no `sha`, an `open` one with no `pr`) are reported
@@ -59,8 +59,8 @@
 # which the exec line sets: without it psych dies on the first em-dash in a plan. The
 # block is read with `safe_load`, dates permitted, so it behaves the same on Psych 3 and
 # on Psych 4; it is parsed for its shape only -- a digit-only `sha` reads as a number
-# here, which is why wf-plan-ledger.sh parses the text itself, and nothing below looks at
-# a sha's value. wf-plan-lint.test.sh beside this file mutates a fixture plan into a
+# here, which is why ontherun-plan-ledger.sh parses the text itself, and nothing below looks at
+# a sha's value. ontherun-plan-lint.test.sh beside this file mutates a fixture plan into a
 # failure for every check and asserts which check fires first.
 
 set -u
@@ -71,10 +71,10 @@ if [ "$#" -ne 1 ]; then
 fi
 plan=$1
 if [ ! -f "$plan" ] || [ ! -r "$plan" ]; then
-  printf 'wf-plan-lint: cannot read %s\n' "$plan" >&2
+  printf 'ontherun-plan-lint: cannot read %s\n' "$plan" >&2
   exit 2
 fi
-command -v ruby >/dev/null || { printf 'wf-plan-lint: ruby is required\n' >&2; exit 2; }
+command -v ruby >/dev/null || { printf 'ontherun-plan-lint: ruby is required\n' >&2; exit 2; }
 
 wf_here() { # this script's directory, symlinks resolved
   local s=${BASH_SOURCE[0]} d
@@ -89,17 +89,17 @@ here=$(wf_here)
 # The generator's verdict on the ledger, settled here because it is a shell script: its
 # --write on a copy either reproduces the plan (fresh), changes it (stale), or refuses
 # (error, with its reason). The copy is what keeps a lint from ever writing the plan, and
-# WF_WORKSPACE pins the copy to the plan's own workspace root -- a copy in a temp dir
+# ONTHERUN_WORKSPACE pins the copy to the plan's own workspace root -- a copy in a temp dir
 # would otherwise resolve no checkouts and render every link bare.
 ledger=absent
-generator=$here/wf-plan-ledger.sh
-if [ -x "$generator" ] && [ -r "$here/wf-lib.sh" ]; then
-  # shellcheck source=SCRIPTDIR/wf-lib.sh
-  . "$here/wf-lib.sh"
-  root=${WF_WORKSPACE:-$(wf_root "$plan")}
+generator=$here/ontherun-plan-ledger.sh
+if [ -x "$generator" ] && [ -r "$here/ontherun-lib.sh" ]; then
+  # shellcheck source=SCRIPTDIR/ontherun-lib.sh
+  . "$here/ontherun-lib.sh"
+  root=${ONTHERUN_WORKSPACE:-$(wf_root "$plan")}
   copy=$(mktemp) || exit 2
   cp -- "$plan" "$copy" || exit 2
-  if out=$(WF_WORKSPACE=$root "$generator" "$copy" --write 2>&1); then
+  if out=$(ONTHERUN_WORKSPACE=$root "$generator" "$copy" --write 2>&1); then
     if cmp -s -- "$copy" "$plan"; then ledger=fresh; else ledger=stale; fi
   else
     ledger="error: $out"
@@ -303,10 +303,10 @@ if nodes
         add.("ledger", "the ledger leaves block order at bullet #{k + 1}: it has `#{ledger[k]}`, the block has `#{ids[k]}`")
       end
     elsif generator == "stale"
-      add.("ledger", "the ledger is not wf-plan-ledger.sh's rendering of the block; run `#{generator_path} #{path} --write`")
+      add.("ledger", "the ledger is not ontherun-plan-ledger.sh's rendering of the block; run `#{generator_path} #{path} --write`")
     elsif generator.start_with?("error: ")
       generator.delete_prefix("error: ").each_line do |l|
-        add.("ledger", "wf-plan-ledger.sh refuses the block: #{l.strip.sub(/\Awf-plan-ledger: \S+: /, '')}")
+        add.("ledger", "ontherun-plan-ledger.sh refuses the block: #{l.strip.sub(/\Awf-plan-ledger: \S+: /, '')}")
       end
     end
   end
@@ -418,13 +418,13 @@ rank = CHECKS.each_with_index.to_h
 failures = failures.each_with_index.sort_by { |(c, _), i| [rank[c], i] }.map(&:first)
 if failures.empty?
   if nodes
-    puts "wf-plan-lint: ok #{path} — #{nodes.size} nodes (#{counts['pr']} pr, #{counts['setup']} setup, #{counts['manual']} manual)"
+    puts "ontherun-plan-lint: ok #{path} — #{nodes.size} nodes (#{counts['pr']} pr, #{counts['setup']} setup, #{counts['manual']} manual)"
   else
-    puts "wf-plan-lint: ok #{path} — no ## State block"
+    puts "ontherun-plan-lint: ok #{path} — no ## State block"
   end
   exit 0
 end
 failures.each { |c, m| puts "FAIL #{c}: #{m}" }
-puts "wf-plan-lint: FAIL #{failures[0][0]} — #{failures.size} failure#{'s' if failures.size > 1} in #{path}"
+puts "ontherun-plan-lint: FAIL #{failures[0][0]} — #{failures.size} failure#{'s' if failures.size > 1} in #{path}"
 exit 1
 RUBY

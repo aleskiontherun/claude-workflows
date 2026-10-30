@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Tests for wf-plan-lint.sh. No framework: fixtures/lint-plan.md as the one positive
+# Tests for ontherun-plan-lint.sh. No framework: fixtures/lint-plan.md as the one positive
 # fixture (all three node kinds, two phases, a ledger, a counted Status, three review
 # rounds), and every negative fixture derived from it by a mutation applied inside this
 # file.
 #
-#   wf-plan-lint.test.sh
+#   ontherun-plan-lint.test.sh
 #
 # Exits 0 if every case passes, 1 otherwise. Needs `ruby` and `git`.
 #
@@ -33,7 +33,7 @@
 set -u
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-LINT="$SCRIPT_DIR/wf-plan-lint.sh"
+LINT="$SCRIPT_DIR/ontherun-plan-lint.sh"
 
 command -v ruby >/dev/null || { echo "ruby is required" >&2; exit 2; }
 command -v git >/dev/null || { echo "git is required" >&2; exit 2; }
@@ -66,7 +66,7 @@ assert_lacks() { # name needle haystack
 
 run() { OUT=$("$LINT" "$@" 2>&1); RC=$?; }
 
-first() { printf '%s\n' "$OUT" | sed -n 's/^wf-plan-lint: FAIL \([a-z-]*\) .*/\1/p'; }
+first() { printf '%s\n' "$OUT" | sed -n 's/^ontherun-plan-lint: FAIL \([a-z-]*\) .*/\1/p'; }
 
 # mutate '<ruby over s>' -- writes a fresh mutant of the fixture to $F. The expression
 # edits the string `s` in place (`s.sub!`, `s.gsub!`); `sub!` touches the first match
@@ -109,14 +109,14 @@ PR=$((N - SETUP - MANUAL))
 LAST_ROUND=$(grep -oiE '^- \*\*[^*]*\bround [0-9]+' "$FIXTURE" | tail -1 | grep -oE '[0-9]+$')
 FIRST_ID=$(grep -m1 '^  - id: ' "$FIXTURE" | sed 's/^  - id: //')
 
-echo "wf-plan-lint.sh"
+echo "ontherun-plan-lint.sh"
 
 # ------------------------------------------------------------------ the positive fixture
 
 run "$FIXTURE"
 assert_eq "the fixture passes" 0 "$RC"
 assert_eq "  and the summary counts its nodes by kind" \
-  "wf-plan-lint: ok $FIXTURE — $N nodes ($PR pr, $SETUP setup, $MANUAL manual)" "$OUT"
+  "ontherun-plan-lint: ok $FIXTURE — $N nodes ($PR pr, $SETUP setup, $MANUAL manual)" "$OUT"
 if [ "$SETUP" -gt 0 ] && [ "$MANUAL" -gt 0 ] && [ "$PR" -gt 0 ]; then
   ok "  the fixture carries all three kinds"
 else
@@ -272,8 +272,8 @@ expect_ok "a non-id bold bullet in the preamble is not a ledger entry"
 # The ids and their order intact, a title hand-edited: only the generator's rendering
 # tells, and plan-format.md says the ledger is that rendering and nothing else.
 mutate 's.sub!(/^(- \*\*api-4\*\* )`test\(db\): /, "\\1`test(db)!: ")'
-expect_first "a ledger bullet hand-edited away from the block" ledger "not wf-plan-ledger.sh's rendering"
-assert_has "  and says how to regenerate it" "wf-plan-ledger.sh $F --write" "$OUT"
+expect_first "a ledger bullet hand-edited away from the block" ledger "not ontherun-plan-ledger.sh's rendering"
+assert_has "  and says how to regenerate it" "ontherun-plan-ledger.sh $F --write" "$OUT"
 
 # The generator's own refusals reach the report: a merged node the README says carries
 # a sha, without one.
@@ -283,15 +283,15 @@ expect_first "a merged node with no sha" ledger "refuses the block: node api-1: 
 # Without the generator beside the script that half of the check is skipped, and a
 # hand-edited title passes on ids and order alone.
 mkdir -p "$TMP/alone"
-cp "$LINT" "$TMP/alone/wf-plan-lint.sh"
+cp "$LINT" "$TMP/alone/ontherun-plan-lint.sh"
 mutate 's.sub!(/^(- \*\*api-4\*\* )`test\(db\): /, "\\1`test(db)!: ")'
-OUT=$("$TMP/alone/wf-plan-lint.sh" "$F" 2>&1); RC=$?
+OUT=$("$TMP/alone/ontherun-plan-lint.sh" "$F" 2>&1); RC=$?
 assert_eq "  with no plan-ledger.sh beside the script, ids and order are the whole check" 0 "$RC"
 
 # The format's `merged: YYYY-MM-DD` is a date to YAML, and a safe load has to permit it.
 # Checked on the copy without the generator, whose rendering the bullet would then owe.
 mutate 's.sub!(/^(  - id: api-1\n(?:    .*\n)*?)    status: pending\n/, "\\1    status: merged\n    pr: 1\n    sha: abc1234\n    merged: 2026-09-07\n")'
-OUT=$("$TMP/alone/wf-plan-lint.sh" "$F" 2>&1); RC=$?
+OUT=$("$TMP/alone/ontherun-plan-lint.sh" "$F" 2>&1); RC=$?
 assert_eq "a merged: date field parses" 0 "$RC"
 [ "$RC" -eq 0 ] || printf '        %s\n' "$OUT"
 
@@ -438,7 +438,7 @@ LC_ALL=en_US.UTF-8 ruby -Eutf-8:utf-8 -e '
   s = File.read(ARGV[0], encoding: "UTF-8")
   s.sub!(/^(  - id: api-1\n(?:    .*\n)*?)    status: pending\n/, "\\1    status: merged\n    pr: 41\n    sha: 0a1b2c3\n") or abort("anchor")
   File.write(ARGV[1], s)' -- "$FIXTURE" "$LINKED"
-"$SCRIPT_DIR/wf-plan-ledger.sh" "$LINKED" --write 2>/dev/null
+"$SCRIPT_DIR/ontherun-plan-ledger.sh" "$LINKED" --write 2>/dev/null
 assert_has "the fixture's ledger now links api-1 to its origin" \
   "[#41](https://github.com/acme/acme-api/pull/41)" "$(cat "$LINKED")"
 run "$LINKED"

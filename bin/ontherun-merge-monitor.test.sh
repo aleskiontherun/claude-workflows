@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Tests for wf-merge-monitor.sh. No framework: a stub `gh` on PATH, canned JSON, and
+# Tests for ontherun-merge-monitor.sh. No framework: a stub `gh` on PATH, canned JSON, and
 # assertions on stdout and exit status.
 #
-#   wf-merge-monitor.test.sh
+#   ontherun-merge-monitor.test.sh
 #
 # Exits 0 if every case passes, 1 otherwise. Needs `jq`. Most of its wall clock is the
 # poll-loop cases waiting on real polls; it turns the poll interval and the retry
@@ -28,7 +28,7 @@
 set -u
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-MONITOR="$SCRIPT_DIR/wf-merge-monitor.sh"
+MONITOR="$SCRIPT_DIR/ontherun-merge-monitor.sh"
 
 command -v jq >/dev/null || { echo "jq is required" >&2; exit 2; }
 
@@ -160,7 +160,7 @@ prs claude/api-1-first-extended:30:OPEN:false:dddddddcafe \
     claude/api-1-first:31:OPEN:false:eeeeeeecafe \
     claude/api-2-v1.2:32:OPEN:false:fffffffcafe > "$TMP/prefix.json"
 
-echo "wf-merge-monitor.sh"
+echo "ontherun-merge-monitor.sh"
 
 # ---------------------------------------------------- head resolution, two branches
 
@@ -281,18 +281,18 @@ assert_has "gh pr list is run with -R <owner>/<name> from the origin" \
   "pr list -R acme/acme-api --state all --limit 100" "$(cat "$STUB_ARGS")"
 assert_has "  and so is gh pr checks" "pr checks claude/api-2-second -R acme/acme-api --json bucket" "$(cat "$STUB_ARGS")"
 
-# A relative repo resolves against $WF_WORKSPACE when it is set, else against the cwd.
+# A relative repo resolves against $ONTHERUN_WORKSPACE when it is set, else against the cwd.
 mkdir -p "$TMP/ws"
 g init -q "$TMP/ws/acme-web" && g -C "$TMP/ws/acme-web" remote add origin https://github.com/acme/acme-web.git
 : > "$STUB_ARGS"; : > "$STUB_CALLS"
-OUT=$(cd / && WF_WORKSPACE="$TMP/ws" "$MONITOR" --once acme-web claude/api-1-first claude/api-2-second 2>&1); RC=$?
-assert_eq "a relative repo resolves against \$WF_WORKSPACE, not the cwd" 0 "$RC"
+OUT=$(cd / && ONTHERUN_WORKSPACE="$TMP/ws" "$MONITOR" --once acme-web claude/api-1-first claude/api-2-second 2>&1); RC=$?
+assert_eq "a relative repo resolves against \$ONTHERUN_WORKSPACE, not the cwd" 0 "$RC"
 assert_has "  and queries that repo" "pr list -R acme/acme-web" "$(cat "$STUB_ARGS")"
 : > "$STUB_ARGS"; : > "$STUB_CALLS"
-OUT=$(cd "$TMP/ws" && env -u WF_WORKSPACE "$MONITOR" --once acme-web claude/api-1-first claude/api-2-second 2>&1); RC=$?
+OUT=$(cd "$TMP/ws" && env -u ONTHERUN_WORKSPACE "$MONITOR" --once acme-web claude/api-1-first claude/api-2-second 2>&1); RC=$?
 assert_eq "  and against the cwd without it" 0 "$RC"
 assert_has "  the same repo" "pr list -R acme/acme-web" "$(cat "$STUB_ARGS")"
-OUT=$(cd / && env -u WF_WORKSPACE "$MONITOR" --once acme-web claude/api-1-first claude/api-2-second 2>&1); RC=$?
+OUT=$(cd / && env -u ONTHERUN_WORKSPACE "$MONITOR" --once acme-web claude/api-1-first claude/api-2-second 2>&1); RC=$?
 assert_eq "  a relative repo that is not there fails loudly" 1 "$RC"
 
 # A checkout whose origin is not GitHub is queried from its own directory, with no -R.

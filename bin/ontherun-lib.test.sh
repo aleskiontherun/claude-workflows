@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Tests for wf-lib.sh, the functions the other wf- scripts source. No framework: throwaway
+# Tests for ontherun-lib.sh, the functions the other ontherun- scripts source. No framework: throwaway
 # repos with local bare origins, each function called directly, assertions on what it
 # prints and returns.
 #
-#   wf-lib.test.sh
+#   ontherun-lib.test.sh
 #
 # Exits 0 if every case passes, 1 otherwise. Needs git. git runs with per-command
 # overrides only, never `git config` into a repo, and with signing off.
@@ -11,8 +11,8 @@
 set -u
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-# shellcheck source=SCRIPTDIR/wf-lib.sh
-. "$SCRIPT_DIR/wf-lib.sh"
+# shellcheck source=SCRIPTDIR/ontherun-lib.sh
+. "$SCRIPT_DIR/ontherun-lib.sh"
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -31,8 +31,8 @@ assert_eq() { # name expected actual
 
 g() { git -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false -c init.defaultBranch=main "$@"; }
 
-echo "wf-lib.sh"
-unset WF_WORKSPACE
+echo "ontherun-lib.sh"
+unset ONTHERUN_WORKSPACE
 
 # ------------------------------------------------------------------------ wf_root
 
@@ -46,11 +46,11 @@ g init -q "$TMP/ws" && g -C "$TMP/ws" add -A && g -C "$TMP/ws" commit -q -m ws
 assert_eq "wf_root: a plan in plans/ -> the parent of plans/" "$T/ws" "$(wf_root "$TMP/ws/plans/a.md")"
 assert_eq "wf_root: a plan in plans/done/ -> the same root" "$T/ws" "$(wf_root "$TMP/ws/plans/done/b.md")"
 assert_eq "wf_root: a relative path" "$T/ws" "$(cd "$TMP/ws/plans" && wf_root a.md)"
-assert_eq "wf_root: \$WF_WORKSPACE wins" "$T/ws/app" "$(WF_WORKSPACE="$TMP/ws/app" wf_root "$TMP/ws/plans/a.md")"
-if WF_WORKSPACE="$TMP/nowhere" wf_root "$TMP/ws/plans/a.md" >/dev/null 2>&1; then
-  bad "wf_root: a \$WF_WORKSPACE that is not there fails"
+assert_eq "wf_root: \$ONTHERUN_WORKSPACE wins" "$T/ws/app" "$(ONTHERUN_WORKSPACE="$TMP/ws/app" wf_root "$TMP/ws/plans/a.md")"
+if ONTHERUN_WORKSPACE="$TMP/nowhere" wf_root "$TMP/ws/plans/a.md" >/dev/null 2>&1; then
+  bad "wf_root: a \$ONTHERUN_WORKSPACE that is not there fails"
 else
-  ok "wf_root: a \$WF_WORKSPACE that is not there fails"
+  ok "wf_root: a \$ONTHERUN_WORKSPACE that is not there fails"
 fi
 
 g -C "$TMP/ws" worktree add -q "$TMP/wt" -b wt

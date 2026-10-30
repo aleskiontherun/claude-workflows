@@ -122,9 +122,9 @@ Then:
 
 ## Step 3: implement, then hand off to review
 
-**Your first action in this step is the tool call `Skill(implement)`** — not recalling
+**Your first action in this step is the tool call `Skill(ontherun:implement)`** — not recalling
 that skill, not reading about it here: the call. It leads on to `review-loop`; if it
-somehow doesn't, call that one directly. Those two are the protocol for everything that
+somehow doesn't, call `ontherun:review-loop` directly. Those two are the protocol for everything that
 follows — implementing, the pre-review gate, `reviewer`, validating every finding with
 `validator`, fixing, opening the PR — and this section deliberately doesn't summarise
 them: a summary convincing enough to substitute for the file and incomplete enough to break

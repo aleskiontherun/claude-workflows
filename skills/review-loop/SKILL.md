@@ -226,7 +226,7 @@ plugin. Their criteria live in those files, outside both the implementer's and t
 control.
 
 Both are read-only. Their `tools:` frontmatter gives them `Bash`, and the plugin's
-`PreToolUse` hook (`hooks/wf-readonly-guard.sh`) denies every Bash call from them that is not
+`PreToolUse` hook (`hooks/readonly-guard.sh`) denies every Bash call from them that is not
 a read-only form of `git`, `gh`, `curl`, `find` or a plain filter. A denied command comes back
 to the agent with the reason; it is not a sign the review is broken.
 

@@ -73,7 +73,7 @@ verifier runs.
 | `overtaken` | Report and ask. Neither `done/` nor a relaunch is right |
 
 Write the verified block into the plan before launching anything, regenerate the ledger
-(`wf-plan-ledger.sh <plan> --write`), and commit both by pathspec in the plans repo. A session
+(`ontherun-plan-ledger.sh <plan> --write`), and commit both by pathspec in the plans repo. A session
 that dies here leaves the next one better off.
 
 **Carry over the `delivered:` entries the plan already records** — the verifier omits that
@@ -147,7 +147,7 @@ implementer worked around a wrong sentence, which is exactly why this is easy to
 forget. Correct the plan, note the deviation in the Status prose, and say the one line to the
 human while the next wave is still unlaunched. **Correct every sentence the divergence made
 wrong, not the built node's own section** — the build order, a sibling node's spec, prose a
-later implementer will read as fact — sweeping with `wf-plan-fold-sweep.sh` as
+later implementer will read as fact — sweeping with `ontherun-plan-fold-sweep.sh` as
 `plan-review-loop.md`'s *Check the fold* says. **The same applies to an owner ruling you fold
 in**: a ruling feels authoritative, which is when the sweep gets skipped.
 
@@ -225,11 +225,11 @@ round the protocol says a sync can owe — and nothing else.
 One `Monitor` per repo — never one per PR — armed with the longest `timeout_ms` the tool
 allows. **A monitor expires**: on each expiry notice, re-arm it with the same list. An expiry is
 not a queue event, and a queue nobody re-armed reads exactly like a quiet one. The loop is
-`${CLAUDE_PLUGIN_ROOT}/bin/wf-merge-monitor.sh`, armed with the repo's absolute path and this plan's
+`${CLAUDE_PLUGIN_ROOT}/bin/ontherun-merge-monitor.sh`, armed with the repo's absolute path and this plan's
 still-eligible branches in that repo, **in queue order**:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/bin/wf-merge-monitor.sh /abs/path/acme-api \
+${CLAUDE_PLUGIN_ROOT}/bin/ontherun-merge-monitor.sh /abs/path/acme-api \
   claude/api-1-<slug> claude/api-2-<slug>
 ```
 
