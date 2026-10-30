@@ -25,8 +25,8 @@
 #               must be cat, less, more, true or false
 #   git    diff log show grep rev-parse blame ls-files ls-tree ls-remote cat-file merge-base
 #          rev-list status describe shortlog name-rev for-each-ref show-ref count-objects
-#          check-ignore; `fetch` without a refspec destination or a forcing, pruning or
-#          upstream flag; `symbolic-ref` with one ref; `worktree list`;
+#          check-ignore; `fetch` without a refspec destination, --stdin, or a forcing,
+#          pruning or upstream flag; `symbolic-ref` with one ref; `worktree list`;
 #          `remote` with -v, show or get-url; `branch` and `tag` in their listing forms;
 #          `config` only with --get, --get-all, --get-regexp, --list or -l. Global `-c`
 #          only for pager, color, abbreviation and locale keys, with the pager values above.
@@ -217,6 +217,7 @@ check_git() { # words after `git`
          || has_flag '--set-upstream' "${rest[@]+"${rest[@]}"}" || has_flag '--refmap*' "${rest[@]+"${rest[@]}"}"; then
         deny "\`git fetch\` with a flag that forces, prunes or rewrites refs"
       fi
+      has_flag '--stdin' "${rest[@]+"${rest[@]}"}" && deny "\`git fetch --stdin\` reads refspecs the guard cannot see"
       local r
       for r in "${rest[@]+"${rest[@]}"}"; do
         case $r in -*) ;; *:*|+*) deny "\`git fetch\` with a refspec destination writes a local ref; fetch the remote and read origin/<branch>" ;; esac
@@ -339,7 +340,7 @@ check_curl() { # words after `curl`
   for a in "${w[@]+"${w[@]}"}"; do
     case $a in
       *'%output{'*) deny "\`curl --write-out\` with %output{} writes a file" ;;
-      @*|*=@*) deny "\`curl\` reading an argument from a file the guard cannot see" ;;
+      @*|*=@*|-[A-Za-z]*@*) deny "\`curl\` reading an argument from a file the guard cannot see" ;;
     esac
   done
   # The short forms, clustered or attached, once the allowed exact words above are out.

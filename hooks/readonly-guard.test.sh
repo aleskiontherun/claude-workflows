@@ -239,6 +239,8 @@ expect deny  $R 'git -C /work/acme-api fetch -f origin x:main'
 expect deny  $R 'git -C /work/acme-api fetch origin +refs/heads/x:refs/heads/x'
 expect deny  $R 'git -C /work/acme-api fetch --prune origin'
 expect deny  $R 'git -C /work/acme-api fetch -qp origin'
+expect deny  $R "git -C /work/acme-api fetch --stdin . <<< 'HEAD:refs/heads/x'"
+expect deny  $R "printf 'HEAD:refs/heads/x\\n' | git -C /work/acme-api fetch --stdin ."
 expect allow $R 'git -C /work/acme-api fetch -q origin'
 expect allow $R 'git -C /work/acme-api fetch --all'
 expect allow $R 'git -C /work/acme-api fetch origin main feature/x'
@@ -250,6 +252,10 @@ expect deny  $P 'curl -s -o /dev/null -w "%output{/tmp/x}rm -rf /" https://examp
 expect deny  $P 'curl -s -o /dev/null -sw "%output{/tmp/x}" https://example.com/'
 expect deny  $P 'curl -s --write-out="%output{/tmp/x}" https://example.com/'
 expect deny  $P 'curl -s -w @/tmp/fmt https://example.com/'
+expect deny  $P 'curl -s -w@/tmp/fmt https://example.com/'
+expect deny  $P 'curl -sw@/tmp/fmt https://example.com/'
+expect deny  $P 'curl -s -H@/tmp/headers https://example.com/'
+expect allow $P 'curl -s https://user@example.com/path'
 expect allow $P 'curl -s -o /dev/null -w "%{http_code} %{url_effective}" https://example.com/'
 
 # -------------------------------------------------------------- sed and awk
