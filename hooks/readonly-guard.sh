@@ -57,7 +57,9 @@
 # agent's doing.
 #
 # Needs jq and perl. Always exits 0; the decision is the JSON, and a hook that exits
-# non-zero for a parse error would block every Bash call in the session.
+# non-zero for a parse error would block every Bash call in the session. Without jq the
+# caller cannot be identified and nothing is decided; without perl a read-only agent's
+# command is denied rather than let through unread.
 
 set -u
 
@@ -127,10 +129,11 @@ read_commands() {
       pos($seg) = 0;
       while ($seg =~ /\G\s*((?:[^\s"\x27\\]|\\.|"(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27)+)/gc) {
         my $w = $1;
-        $w =~ s/"((?:[^"\\]|\\.)*)"|\x27([^\x27]*)\x27|\\(.)/defined $1 ? $1 : defined $2 ? $2 : $3/gse;
-        $w =~ s/\n/ /g;
+        # A redirection is an operator only when written bare; a quoted ">" is an argument.
         if ($w =~ /^[0-9]*(?:<<?<?|&?>>?)(?:\/dev\/null|&[0-9]+)?$/) { $after_redirect = ($w !~ /\/dev\/null|&[0-9]+$/); next }
         if ($after_redirect) { $after_redirect = 0; next }   # the file a bare `2>` or `<` names
+        $w =~ s/"((?:[^"\\]|\\.)*)"|\x27([^\x27]*)\x27|\\(.)/defined $1 ? $1 : defined $2 ? $2 : $3/gse;
+        $w =~ s/\n/ /g;
         push @w, $w;
       }
       my $rest = substr($seg, pos($seg) // 0);
@@ -383,5 +386,9 @@ while IFS= read -r line; do
   IFS=$'\x1f' read -r -a words <<< "$line"
   check_segment "${words[@]}"
 done < <(read_commands)
+
+# The checker always prints a status line for a non-empty command, so silence means it did
+# not run -- perl missing, or a crash -- and a read-only agent's command must not pass unread.
+$first && deny "the command could not be checked (is perl installed?)"
 
 exit 0

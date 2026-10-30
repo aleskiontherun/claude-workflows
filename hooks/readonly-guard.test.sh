@@ -215,6 +215,19 @@ expect deny  $R "TERM=-exec; find /work -name \"'\" -o -name \"*.py\" \"\$TERM\"
 expect deny  $R "echo \"it's\" \"\$HOME\" 'x'"
 expect allow $R "grep -c \"don't\" /work/acme-api/f"
 expect allow $R "grep -c \"it's\" /work/acme-api/f | grep -v '\$x'"
+# A quoted operator is an argument, and the word after it is checked like any other.
+expect deny  $R 'find /work ! -name "<" -delete'
+expect deny  $R 'rg x /work ">" --pre /work/repo/tools/evil.sh'
+expect deny  $R 'sort /work/f "2>" -o /tmp/x'
+expect deny  $R 'git -C /work/repo branch -r "<" -D origin/feature'
+expect allow $R 'grep -c ">" /work/acme-api/f'
+expect allow $R "grep -c '<' /work/acme-api/f 2>/dev/null"
+
+# A checker that cannot run denies rather than falling through.
+TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+mkdir -p "$TMP/bin"; printf '#!/bin/sh\nexit 1\n' > "$TMP/bin/perl"; chmod +x "$TMP/bin/perl"
+out=$(jq -n '{tool_name:"Bash",agent_type:"reviewer",tool_input:{command:"ls /work"}}' | PATH="$TMP/bin:$PATH" "$GUARD" 2>/dev/null)
+if [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = deny ]; then ok "perl failing -> deny"; else bad "perl failing -> deny" "got: $out"; fi
 expect allow $R 'echo \$HOME'
 expect allow $R 'git -C /work/acme-api log -L10,20:src/a.py'
 expect allow $R 'find /work -name "*.py" -newer /work/x'
