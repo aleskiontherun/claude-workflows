@@ -306,7 +306,7 @@ if nodes
       add.("ledger", "the ledger is not ontherun-plan-ledger.sh's rendering of the block; run `#{generator_path} #{path} --write`")
     elsif generator.start_with?("error: ")
       generator.delete_prefix("error: ").each_line do |l|
-        add.("ledger", "ontherun-plan-ledger.sh refuses the block: #{l.strip.sub(/\Awf-plan-ledger: \S+: /, '')}")
+        add.("ledger", "ontherun-plan-ledger.sh refuses the block: #{l.strip.sub(/\Aontherun-plan-ledger: \S+: /, '')}")
       end
     end
   end
