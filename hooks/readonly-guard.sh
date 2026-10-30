@@ -194,7 +194,17 @@ walk_opts() { # label words...
   OPERANDS=(); SEEN=""
   while [ $# -gt 0 ]; do
     w=$1; shift
-    if [ -n "$need_value" ]; then need_value=""; continue; fi
+    if [ -n "$need_value" ]; then
+      need_value=""
+      # A separate value shaped like an option -- `--word`, or a dash and letters only -- is
+      # one: a tool whose option takes an optional argument reads the next word as a new
+      # option, so the guard must too. `-1`, `-label:x` or `-5,+3` are values.
+      case $w in
+        --[A-Za-z]*) deny "\`$label\` has an option value that looks like an option; write it as --option=value" ;;
+        -[A-Za-z]*) [ -n "${w//[-A-Za-z]/}" ] || deny "\`$label\` has an option value that looks like an option; write it as --option=value or put the dash in brackets" ;;
+      esac
+      continue
+    fi
     case $w in
       --) OPERANDS+=("$@"); return 0 ;;
       --*)
@@ -263,8 +273,8 @@ check_git_config() { # key=value from -c
 # writes a file, --ext-diff, which runs the configured external diff, --show-signature, which
 # runs gpg, or -O / --open-files-in-pager.
 DIFF_FLAGS='pusabwWzRtrDc'
-DIFF_VALUES='UlISG'
-DIFF_OPTIONAL='MCBX'
+DIFF_VALUES='lISG'
+DIFF_OPTIONAL='MCBXU'   # -U takes its number attached; a bare -U is followed by a new option
 DIFF_LONGS='stat numstat shortstat name-only name-status summary patch no-patch raw patch-with-raw
   patch-with-stat compact-summary dirstat dirstat-by-file cumulative unified function-context
   minimal patience histogram indent-heuristic full-index abbrev binary text color color-moved
@@ -289,9 +299,10 @@ LOG_LONGS='all-match invert-grep regexp-ignore-case basic-regexp extended-regexp
   children left-right graph count objects objects-edge indexed-objects unpacked
   in-commit-order object-names no-object-names filter-print-omitted exclude-promisor-objects
   disk-usage use-bitmap-index progress header timestamp decorate clear-decorations source
-  use-mailmap mailmap follow log-size full-diff bisect stdin since-as-filter'
+  use-mailmap mailmap follow log-size full-diff bisect stdin since-as-filter
+  pretty show-linear-break'
 LOG_LONGVALS='max-count skip since after until before author committer grep grep-reflog
-  min-parents max-parents glob exclude pretty format encoding date show-linear-break
+  min-parents max-parents glob exclude format encoding date
   decorate-refs decorate-refs-exclude filter missing max-age min-age default'
 
 check_git() { # words after `git`
@@ -349,9 +360,10 @@ check_git() { # words after `git`
     fetch)
       # A fetch updates remote-tracking refs, which is fine. Not a forcing, pruning or upstream
       # option, not --stdin, --upload-pack or anything that runs maintenance; not --depth,
-      # --deepen or --shallow-*, which turn the human's full clone into a shallow one; and no
-      # refspec with a destination or a `+`, which writes or deletes the checkout's own branches.
-      lists 'qvtnk46' 'j' '' 'quiet verbose all tags dry-run no-tags recurse-submodules no-recurse-submodules progress no-progress atomic porcelain ipv4 ipv6 keep multiple prefetch' 'jobs negotiation-tip filter' ;;
+      # --deepen or --shallow-*, which turn the human's full clone into a shallow one, nor
+      # --filter, which turns it into a partial one; and no refspec with a destination or a
+      # `+`, which writes or deletes the checkout's own branches.
+      lists 'qvtnk46' 'j' '' 'quiet verbose all tags dry-run no-tags recurse-submodules no-recurse-submodules progress no-progress atomic porcelain ipv4 ipv6 keep multiple prefetch' 'jobs negotiation-tip' ;;
     symbolic-ref)
       lists 'q' '' '' 'quiet short recurse no-recurse' '' ;;
     worktree)
@@ -410,7 +422,12 @@ check_gh() { # words after `gh`
   [ $# -ge 2 ] && rest=("${@:3}")
   NEGATE=no
   case "$sub $act" in
-    'pr list'|'pr view'|'pr checks'|'pr diff'|'pr status'|'issue list'|'issue view'|'repo view'|'run list'|'run view'|'release list'|'release view'|'auth status')
+    'auth status')
+      # Its own list: -t / --show-token prints the account's token, and -c is not an option here.
+      lists 'a' 'h' '' 'active help' 'hostname'
+      walk_opts "gh auth status" "${rest[@]+"${rest[@]}"}"
+      return 0 ;;
+    'pr list'|'pr view'|'pr checks'|'pr diff'|'pr status'|'issue list'|'issue view'|'repo view'|'run list'|'run view'|'release list'|'release view')
       # Not -w / --web, which opens a browser.
       lists 'vdi' 'RLsaABHlSqtjbeumc' '' 'draft comments required fail-fast watch log log-failed exit-status verbose patch name-only help' 'json jq template limit state assignee author base head label search app milestone mention order sort interval job branch workflow event status user commit repo color'
       walk_opts "gh $sub $act" "${rest[@]+"${rest[@]}"}"
