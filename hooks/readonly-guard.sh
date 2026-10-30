@@ -33,13 +33,15 @@
 #          or --config-env
 #   gh     pr list|view|checks|diff|status; issue list|view; repo view; run list|view;
 #          release list|view; auth status; api with no method other than GET and no body
-#   curl   with no method other than GET or HEAD, no body, no output, config, trace or
-#          cookie file (-o /dev/null is fine)
+#   curl   with no method other than GET or HEAD, no body, no output, config, trace,
+#          cookie, HSTS or Alt-Svc file (-o /dev/null is fine)
 #   find   without -delete, -exec, -execdir, -ok, -okdir, -fls or -fprint*
 #   sed    with -n, -E, -r and -e only, and a program made of addresses plus p d q = l n N D
 #          P h H g G x, s/// without the w or e flags, y///, and braces -- so no w, r, e, -i
 #          or -f
-#   awk    with no >, |, system( or program file in its arguments
+#   awk    with no >, |, system(), @load, @include or program file in its arguments
+#   and every command named bare, as found on PATH: `./tools/git` or `/usr/bin/cat` is
+#          denied, since a repository under review can ship a binary by any name
 #   sort   without -o or --compress-program;  uniq  with at most one operand;  rg  without
 #          --pre
 #   and    ls cat head tail wc grep egrep fgrep tr cut jq diff comm column nl echo printf
@@ -91,7 +93,9 @@ read_commands() {
   GUARD_CMD=$cmd perl -e '
     my $raw = $ENV{GUARD_CMD};
     my $m = $raw;
-    $m =~ s/("(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27)/ substr($1,0,1) . ("Q" x (length($1)-2)) . substr($1,0,1) /ge;
+    # A backslash escape outside quotes is consumed first, so `\x27` is a literal quote and
+    # `\<newline>` a continuation, not the start of a string or a separator.
+    $m =~ s/(\\.|"(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27)/ length($1) == 2 && substr($1,0,1) eq "\\" ? "QQ" : substr($1,0,1) . ("Q" x (length($1)-2)) . substr($1,0,1) /gse;
     $m =~ s/([0-9]*&?>>?[ \t]*\/dev\/null|[0-9]*>&[0-9]+)/ " " x length($1) /ge;
     if ($m =~ />/) { print "REDIRECT\n"; exit 0 }
     print "OK\n";
@@ -306,7 +310,7 @@ check_curl() { # words after `curl`
         i=$((i + 2)); continue ;;
       -o/dev/null|--output=/dev/null) ;;
       --output=*) deny "\`curl\` writing to a file; only -o /dev/null is allowed" ;;
-      --remote-name|--remote-name-all|--remote-header-name|--create-dirs|--output-dir|--output-dir=*|--cookie-jar|--cookie-jar=*|--dump-header|--dump-header=*|--trace|--trace-ascii|--trace-ascii=*|--trace=*|--etag-save|--etag-save=*|--libcurl|--libcurl=*|--stderr|--stderr=*)
+      --remote-name|--remote-name-all|--remote-header-name|--create-dirs|--output-dir|--output-dir=*|--cookie-jar|--cookie-jar=*|--dump-header|--dump-header=*|--trace|--trace-ascii|--trace-ascii=*|--trace=*|--etag-save|--etag-save=*|--libcurl|--libcurl=*|--stderr|--stderr=*|--hsts|--hsts=*|--alt-svc|--alt-svc=*)
         deny "\`curl ${w[$i]%%=*}\` writes a file" ;;
       --config|--config=*)
         deny "\`curl --config\` reads options from a file the guard cannot see" ;;
@@ -363,7 +367,10 @@ check_segment() { # the words of one simple command, unquoted
     esac
   done
   [ ${#words[@]} -gt 0 ] || return 0
-  local prog=${words[0]##*/}
+  local prog=${words[0]}
+  case $prog in
+    */*) deny "\`$prog\` names a program by path; only bare command names found on PATH are allowed" ;;
+  esac
   local -a rest=("${words[@]:1}")
   case $prog in
     git) check_git "${rest[@]+"${rest[@]}"}" ;;
@@ -379,10 +386,11 @@ check_segment() { # the words of one simple command, unquoted
     awk|gawk|mawk|nawk)
       local a
       for a in "${rest[@]+"${rest[@]}"}"; do
+        [[ $a =~ system[[:space:]]*\( ]] && deny "\`awk\` with system() runs arbitrary commands"
+        [[ $a =~ @(load|include) ]] && deny "\`awk\` with @load or @include loads code the guard cannot see"
         case $a in
           *'>'*) deny "\`awk\` with a redirection in its program" ;;
           *'|'*) deny "\`awk\` with a pipe in its program" ;;
-          *'system('*) deny "\`awk\` with system() runs arbitrary commands" ;;
           --file|--file=*|--exec|--exec=*|--include|--include=*|--load|--load=*) deny "\`awk $a\` loads a program the guard cannot see" ;;
         esac
       done

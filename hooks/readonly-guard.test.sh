@@ -220,6 +220,17 @@ expect deny  $R 'rg --pre /tmp/x pattern /work/acme-api'
 expect deny  $R 'sort -uo /tmp/out /work/acme-api/in.txt'
 expect allow $R 'sort -un /work/acme-api/in.txt'
 expect deny  $R "awk -fprog.awk /work/acme-api/f"
+# Escapes outside quotes, programs named by path, and the remaining curl file writers.
+expect deny  $R "echo \\' ; rm -rf /tmp/x \\'"
+expect deny  $R "ls \\' | tee /tmp/x \\'"
+expect deny  $R 'echo \" ; rm -rf /tmp/x \"'
+expect allow $R "grep -E 'a\\|b' /work/acme-api/f"
+expect allow $R 'git -C /work/acme-api log --format="%h\\n" -3'
+expect deny  $R './tools/git log'
+expect deny  $R '/usr/bin/cat /work/acme-api/README.md'
+expect deny  $R '/work/acme-api/node_modules/.bin/cat x'
+expect deny  $P 'curl -s --hsts /tmp/x -o /dev/null https://example.com/'
+expect deny  $P 'curl -s --alt-svc=/tmp/x https://example.com/'
 
 # -------------------------------------------------------------- sed and awk
 expect allow $R 'sed -n "10,20p" /work/acme-api/src/app.py'
@@ -239,6 +250,8 @@ expect deny  $R "sed -n 's/a/b/e' /work/acme-api/f"
 expect allow $R "awk '{print \$1}' /work/acme-api/data.txt"
 expect allow $R "awk -F: '/foo/ {n++} END {print n}' /work/acme-api/f"
 expect deny  $R "awk 'BEGIN{system(\"rm -rf /tmp/x\")}'"
+expect deny  $R "awk 'BEGIN{system (\"rm -rf /tmp/x\")}'"
+expect deny  $R "awk '@load \"filefuncs\"; BEGIN{print 1}'"
 expect deny  $R "awk '{print > \"/tmp/out\"}' /work/acme-api/f"
 expect deny  $R "awk 'BEGIN{print \"x\" | \"rm -rf /tmp/y\"}'"
 expect deny  $R "awk -f /tmp/prog.awk /work/acme-api/f"
