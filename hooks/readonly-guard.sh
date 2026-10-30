@@ -40,8 +40,9 @@
 #          P h H g G x, s/// without the w or e flags, y///, and braces -- so no w, r, e, -i
 #          or -f
 #   awk    with no >, |, system(), @load, @include or program file in its arguments
-#   and every command named bare, as found on PATH: `./tools/git` or `/usr/bin/cat` is
-#          denied, since a repository under review can ship a binary by any name
+#   and every command named bare or under /usr/bin, /bin, /usr/local/bin or
+#          /opt/homebrew/bin: `./tools/git` or `node_modules/.bin/cat` is denied, since a
+#          repository under review can ship a binary by any name
 #   sort   without -o or --compress-program;  uniq  with at most one operand;  rg  without
 #          --pre
 #   and    ls cat head tail wc grep egrep fgrep tr cut jq diff comm column nl echo printf
@@ -107,6 +108,7 @@ read_commands() {
       $start = $i + 1;
       next unless $seg =~ /\S/;
       $seg =~ s/^\s*\(+//; $seg =~ s/\)+\s*$//;   # a subshell is its command
+      $seg =~ s/\\\n//g;                           # a continued line is one line
       my @w;
       my $after_redirect = 0;
       pos($seg) = 0;
@@ -367,9 +369,12 @@ check_segment() { # the words of one simple command, unquoted
     esac
   done
   [ ${#words[@]} -gt 0 ] || return 0
+  # A program named by path is allowed only under the system directories a repository under
+  # review cannot write to; `./tools/git` or `node_modules/.bin/cat` would be its code.
   local prog=${words[0]}
   case $prog in
-    */*) deny "\`$prog\` names a program by path; only bare command names found on PATH are allowed" ;;
+    /usr/bin/*|/bin/*|/usr/local/bin/*|/opt/homebrew/bin/*) prog=${prog##*/} ;;
+    */*) deny "\`$prog\` names a program by path; use the bare name, or a path under /usr/bin, /bin, /usr/local/bin or /opt/homebrew/bin" ;;
   esac
   local -a rest=("${words[@]:1}")
   case $prog in
