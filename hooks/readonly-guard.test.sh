@@ -211,6 +211,10 @@ expect allow $R 'grep -E "foo$|bar$" /work/acme-api/f'
 expect allow $R 'git -C /work/acme-api grep -nE "TODO$" origin/main -- src/'
 expect deny  $R 'grep -E "foo$HOME" /work/acme-api/f'
 expect deny  $R 'find /work -name "*.py" $"-exec" rm -rf {} \;'
+expect deny  $R "TERM=-exec; find /work -name \"'\" -o -name \"*.py\" \"\$TERM\" rm -rf {} \\; -o -name \"'\""
+expect deny  $R "echo \"it's\" \"\$HOME\" 'x'"
+expect allow $R "grep -c \"don't\" /work/acme-api/f"
+expect allow $R "grep -c \"it's\" /work/acme-api/f | grep -v '\$x'"
 expect allow $R 'echo \$HOME'
 expect allow $R 'git -C /work/acme-api log -L10,20:src/a.py'
 expect allow $R 'find /work -name "*.py" -newer /work/x'

@@ -101,8 +101,11 @@ read_commands() {
     if ($m =~ />/) { print "REDIRECT\n"; exit 0 }
     # Anything bash would expand into a word the checks never saw: a `$` outside single
     # quotes (a variable, `${...}`, `$\x27...\x27`), or a brace group outside quotes.
+    # Same three-way walk as the mask above, so a quote of one kind inside the other is
+    # text, not a delimiter; a double-quoted string keeps its content, since `$` expands
+    # there, with only its backslash escapes masked.
     my $sq = $raw;
-    $sq =~ s/(\\.|\x27[^\x27]*\x27)/ "Q" x length($1) /gse;
+    $sq =~ s/(\\.|"(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27)/ my $t = $1; substr($t,0,1) eq q(") ? do { (my $u = $t) =~ s{\\.}{QQ}gs; $u } : ("Q" x length($t)) /gse;
     # A `$` expands only when a name, digit, brace, paren or special character follows,
     # or -- outside any quotes -- when it opens `$\x27...\x27` or `$"..."`; a trailing `$`
     # or one before `"`, `|` or `)` is a literal regex anchor.
