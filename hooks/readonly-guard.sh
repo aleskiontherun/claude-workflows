@@ -192,16 +192,16 @@ cluster_has() { # letters words... -> 0 when a short-option word carries one of 
 }
 
 # git, sort and other getopt_long users accept any unambiguous abbreviation of a long option,
-# so `--outp=f` is `--output`. A denied long option therefore matches a word that it begins
-# with (the abbreviation, at least two letters) as well as a word that begins with it (the
-# option with a suffix or a value).
+# so `--outp=f` and even `--o f` are `--output`. A denied long option therefore matches a
+# word that it begins with (the abbreviation, down to one letter) as well as a word that
+# begins with it (the option with a suffix or a value).
 long_opt_hit() { # --option words... -> 0 when a word abbreviates or extends the option
   local full=$1 w t; shift
   for w in "$@"; do
     case $w in --?*) ;; *) continue ;; esac
     t=${w%%=*}
     case $t in "$full"*) return 0 ;; esac
-    [ ${#t} -ge 4 ] || continue
+    [ ${#t} -ge 3 ] || continue   # `--d` is an abbreviation; a bare `--` is not
     case $full in "$t"*) return 0 ;; esac
   done
   return 1
@@ -424,7 +424,7 @@ while IFS= read -r line; do
   [ "$line" = $'\x1e' ] && deny "part of the command could not be parsed (an unbalanced quote?)"
   [ "$line" = $'\x1d' ] && deny "parentheses other than a subshell around a whole command are not allowed (a function definition?)"
   IFS=$'\x1f' read -r -a words <<< "$line"
-  check_segment "${words[@]}"
+  check_segment "${words[@]+"${words[@]}"}"   # guarded: bash 3.2 calls an empty array unbound
 done < <(read_commands)
 
 # The checker always prints a status line for a non-empty command, so silence means it did

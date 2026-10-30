@@ -302,6 +302,21 @@ expect allow $R 'git -C /work/acme-api log --no-merges -3'
 expect allow $R 'git -C /work/acme-api fetch --depth 1 origin main'
 expect allow $R 'git -C /work/acme-api log --format="%h %s" -3'
 expect allow $R 'git -C /work/acme-api show --stat HEAD'
+expect deny  $R 'sort --o /tmp/out /work/acme-api/f'
+expect deny  $R 'git -C /work/acme-api symbolic-ref --d refs/remotes/origin/HEAD'
+expect deny  $R "git -C /work/acme-api ls-remote --u='touch /tmp/pwned' file:///work/acme-api"
+expect deny  $R 'git -C /work/acme-api log --o=/tmp/x'
+expect allow $R 'git -C /work/acme-api log -- src/'
+# An empty word must not crash the guard: bash 3.2 treats an empty array as unbound.
+expect deny  $R "''; rm -rf /tmp/x"
+expect deny  $R '"" ; rm -rf /tmp/x'
+expect deny  $R "'' ls /work/acme-api"   # an empty command name; bash rejects it too
+if [ -x /bin/bash ]; then
+  out=$(jq -n '{tool_name:"Bash",agent_type:"reviewer",tool_input:{command:"''; rm -rf /tmp/x"}}' | /bin/bash "$GUARD" 2>&1); status=$?
+  if [ $status -eq 0 ] && [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = deny ]; then
+    ok "under /bin/bash $(/bin/bash -c 'echo ${BASH_VERSION%%(*}'): empty word -> deny"
+  else bad "under /bin/bash: empty word -> deny" "exit $status: $out"; fi
+fi
 expect deny  $R './tools/git log'
 expect deny  $R '/work/acme-api/node_modules/.bin/cat x'
 expect deny  $R '/tmp/git log'
