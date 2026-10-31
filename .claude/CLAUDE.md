@@ -1,6 +1,6 @@
 # claude-workflows
 
-A Claude Code plugin, `ontherun`, holding skills, agents, shared references, scripts and a hook. Skills and agents
+A Claude Code plugin, `ontherun`, holding skills, agents, shared references and scripts. Skills and agents
 are namespaced `ontherun:<name>`; the scripts carry an `ontherun-` prefix because `bin/` is on the Bash
 `PATH`. `README.md` says what each piece is. This file is for working on the repo; it
 sits under `.claude/` because a `CLAUDE.md` at a plugin's root is not loaded and the validator

@@ -15,7 +15,7 @@ it to go stale.
   similar, and nothing when the clone has no `origin/HEAD` (without `-q --verify`, git
   echoes the name it was given before its error). Then: a skill or script runs
   `git -C <repo> remote set-head origin --auto` once and retries, while a read-only agent
-  (the guard denies `git remote set-head`) skips the repair; either then takes whichever of
+  skips the repair (it writes a ref); either then takes whichever of
   `origin/main` and `origin/master` exists (`git -C <repo> show-ref --verify -q
   refs/remotes/origin/main`). The plugin's files write `origin/main` for short — read it as
   that repo's default branch.
