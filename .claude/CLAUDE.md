@@ -12,8 +12,9 @@ warns about it.
   file; a reference file is read raw, so it says "the plugin root, the parent of this file's
   `reference/` directory" instead. A restatement is a second place for the rule to go stale;
   delete it rather than keep it in step.
-- **Generic only.** Nothing that gets installed — `skills/`, `agents/`, `reference/`, `bin/` — names
-  a particular project, repo, stack, or incident; example values in samples are fine. `README.md`'s migration table is the one place an earlier project is named.
+- **Generic only.** Nothing that gets installed — `skills/`, `agents/`, `reference/`, `bin/` —
+  names a particular project, repo, stack, or incident; example values in samples are fine.
+  `README.md`'s migration table is the one place an earlier project is named.
   Project specifics come from the project's own `AGENTS.md` / `CLAUDE.md` / `CONTRIBUTING.md`
   / `DECISIONS.md` at run time (`reference/project-docs.md`).
 - **Prose says what and why, in the present tense** — never what a file used to say.
