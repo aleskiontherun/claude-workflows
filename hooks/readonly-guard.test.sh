@@ -361,6 +361,13 @@ expect deny  $V 'gh pr view 104 -w'
 expect deny  $V 'gh pr view 104 -R acme/acme-api -c -w'
 expect deny  $V 'gh pr view 104 -R acme/acme-api -c -w=1'
 expect deny  $V 'gh issue view 7 -c -w=true'
+expect deny  $V 'gh pr view 104 -cw'                                 # gh splits a cluster of booleans
+expect deny  $V 'gh issue view 7 -cw'
+expect deny  $V 'gh pr status -cw'
+expect deny  $V 'gh run list -aw x'
+expect allow $V 'gh pr view 104 -c'
+expect allow $V 'gh run list -R acme/acme-api -c abc123'              # -c takes a value here; the SHA is an operand
+expect allow $V 'gh pr list -R acme/acme-api -a octocat'
 expect deny  $V 'gh pr list -R acme/acme-api --unknown'
 expect deny  $V 'gh auth status -t -a'
 expect deny  $V 'gh auth status -t'

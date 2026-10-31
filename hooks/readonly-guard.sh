@@ -409,8 +409,12 @@ check_gh() { # words after `gh`
       walk_opts "gh auth status" "${rest[@]+"${rest[@]}"}"
       return 0 ;;
     'pr list'|'pr view'|'pr checks'|'pr diff'|'pr status'|'issue list'|'issue view'|'repo view'|'run list'|'run view'|'release list'|'release view')
-      # Not -w / --web, which opens a browser.
-      lists 'vdi' 'RLsaABHlSqtjbeumc' '' 'draft comments required fail-fast watch log log-failed exit-status verbose patch name-only help' 'json jq template limit state assignee author base head label search app milestone mention order sort interval job branch workflow event status user commit repo color'
+      # Not -w / --web, which opens a browser. A letter that is boolean on any of these
+      # subcommands is a flag here, even where another gives it a value (-c is --comments
+      # on pr view and --commit on run list): gh splits a cluster of booleans, so reading
+      # `-cw` as `-c` with the value `w` would let --web through, while reading `-c SHA`
+      # as a flag only leaves the SHA an operand.
+      lists 'vdiac' 'RLsABHlSqtjbeum' '' 'draft comments required fail-fast watch log log-failed exit-status verbose patch name-only help' 'json jq template limit state assignee author base head label search app milestone mention order sort interval job branch workflow event status user commit repo color'
       walk_opts "gh $sub $act" "${rest[@]+"${rest[@]}"}"
       return 0 ;;
     'api '*)
