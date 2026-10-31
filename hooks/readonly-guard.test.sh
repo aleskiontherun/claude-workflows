@@ -368,6 +368,11 @@ expect deny  $V 'gh run list -aw x'
 expect allow $V 'gh pr view 104 -c'
 expect allow $V 'gh run list -R acme/acme-api -c abc123'              # -c takes a value here; the SHA is an operand
 expect allow $V 'gh pr list -R acme/acme-api -a octocat'
+expect deny  $V 'gh pr list -R acme/acme-api -a -- -w'               # gh takes -- as the assignee, then --web
+expect deny  $V 'gh issue list -R acme/acme-api -a -- -w'
+expect deny  $V 'gh pr checks 104 -i -- -w'
+expect deny  $V 'gh pr view 104 -- -w'
+expect deny  $V 'gh api -- repos/acme/acme-api'
 expect deny  $V 'gh pr list -R acme/acme-api --unknown'
 expect deny  $V 'gh auth status -t -a'
 expect deny  $V 'gh auth status -t'

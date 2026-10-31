@@ -59,7 +59,8 @@
 #          whose config names a program to run
 #   gh     pr list|view|checks|diff|status; issue list|view; repo view; run list|view;
 #          release list|view; auth status; api with no method other than GET and no body.
-#          Never -w / --web, which opens a browser
+#          Never -w / --web, which opens a browser, and never a `--`, which gh may read as
+#          an option's value where this guard reads the end of the options
 #   sort   never -o, --output, --compress-program, -T or --temporary-directory
 #   uniq   with at most one operand
 #   never  sed, awk, curl, wget or file: each hides write or exec modes in its program,
@@ -398,10 +399,14 @@ check_git() { # words after `git`
 }
 
 check_gh() { # words after `gh`
-  local sub=${1:-} act=${2:-}
+  local sub=${1:-} act=${2:-} w
   local -a rest=()
   [ $# -ge 2 ] && rest=("${@:3}")
   NEGATE=no
+  # gh's parser takes `--` as the value of a short option that wants one, where walk_opts
+  # would take it as the end of the options and stop reading: `-a -- -w` is --assignee=--
+  # --web to gh. No allowed gh command needs a `--`.
+  for w in "$@"; do [ "$w" != -- ] || deny "\`gh\` with a \`--\` is read differently by gh and by this guard; drop it"; done
   case "$sub $act" in
     'auth status')
       # Its own list: -t / --show-token prints the account's token, and -c is not an option here.
