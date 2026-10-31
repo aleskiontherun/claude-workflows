@@ -17,9 +17,10 @@
 #
 #   - words made of letters, digits and `_ . / : @ = , + % ^ ~ -`, single-quoted strings,
 #     and double-quoted strings that contain no `$` and no backtick (a backslash inside them
-#     escapes the next character, as in bash); neither kind of string spans a line, and no
-#     control character but tab appears anywhere, since the checks hand each simple
-#     command's words on as a line of their own;
+#     escapes the next character, as in bash); neither kind of string spans a line, with or
+#     without a backslash before the line break, and no control character but tab and the
+#     newline separator appears anywhere, since the checks hand each simple command's words
+#     on as a line of their own;
 #   - an unquoted `~` only inside a word (`HEAD~1`), never at its start or after `=` or `:`,
 #     where bash expands it before git sees the path;
 #   - the separators `|`, `||`, `&&`, `;`, `&` and newline, which split it into simple
@@ -136,10 +137,12 @@ read_commands() {
           if ($d eq "\\") { $j += 2; next }
           last if $d eq q(");
           if ($d eq "\$" || $d eq "`") { print "EXPANSION\n"; exit 0 }
-          if ($d eq "\n") { print "NEWLINE\n"; exit 0 }
           $j++;
         }
         if ($j >= $len) { print "QUOTE\n"; exit 0 }
+        # The whole body, so that a newline after a backslash -- which bash drops as a line
+        # continuation, and the step over the escape above would skip -- is caught too.
+        if (index(substr($raw, $i, $j - $i), "\n") >= 0) { print "NEWLINE\n"; exit 0 }
         $m .= q(") . ("Q" x ($j - $i - 1)) . q("); $i = $j + 1; next;
       }
       $m .= $c; $i++;
@@ -163,7 +166,7 @@ read_commands() {
       my @w;
       while ($mseg =~ /\S+/g) {
         my $w = substr($seg, $-[0], $+[0] - $-[0]);
-        $w =~ s/\x27([^\x27]*)\x27|"((?:[^"\\]|\\.)*)"/ defined $1 ? $1 : do { (my $u = $2) =~ s{\\([\\"\$`\n])}{$1}gs; $u } /gse;
+        $w =~ s/\x27([^\x27]*)\x27|"((?:[^"\\]|\\.)*)"/ defined $1 ? $1 : do { (my $u = $2) =~ s{\\([\\"\$`])}{$1}g; $u } /gse;
         push @w, $w;
       }
       print join("\x1f", @w), "\n" if @w;

@@ -138,7 +138,8 @@ expect deny  $R $'echo \'a\x1fb\''
 expect deny  $R $'echo "a\x1fb"'
 expect deny  $R $'echo \'a\x01b\''
 expect deny  $R $'echo a\x1fb'
-expect deny  $R $'echo "a\\\nb"'                                    # a line continuation inside quotes
+expect deny  $R $'echo "a\\\ncat"'                                  # a line continuation inside quotes
+expect deny  $R $'git -C /work/repo log -1 --format="%h\\\necho" --output=/tmp/x'
 expect deny  $R 'git -C /work log --{output=/tmp/evil,}'
 expect deny  $R "printf evil | sort \$'-o'/tmp/evil"
 expect deny  $R 'cat "$HOME/.ssh/id_rsa"'
