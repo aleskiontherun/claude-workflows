@@ -11,10 +11,13 @@ it to go stale.
   on the working directory: checkouts can nest, and a bare `git` addresses whichever repo
   happens to contain the cwd.
 - **Default branch** — resolved per repo, never assumed:
-  `git -C <repo> symbolic-ref --short refs/remotes/origin/HEAD` prints `origin/main` or
-  similar. If it fails, run `git -C <repo> remote set-head origin --auto` once and retry;
-  failing that, use whichever of `origin/main` and `origin/master` exists. The plugin's files
-  write `origin/main` for short — read it as that repo's default branch.
+  `git -C <repo> rev-parse --abbrev-ref origin/HEAD` prints `origin/main` or similar. If it
+  fails, the clone has no `origin/HEAD`: a skill or script runs
+  `git -C <repo> remote set-head origin --auto` once and retries, while a read-only agent
+  (the guard denies `git remote`) skips the repair; either then takes whichever of
+  `origin/main` and `origin/master` exists (`git -C <repo> show-ref --verify -q
+  refs/remotes/origin/main`). The plugin's files write `origin/main` for short — read it as
+  that repo's default branch.
 - **Workspace root** — the directory plans, and the repos plan nodes land in, are named
   relative to.
 - **Plans directory** — `<workspace root>/plans/`, unless the instruction files at the

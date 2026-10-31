@@ -74,10 +74,10 @@ wf_plans_dir() { # plan -> dir
 # whichever of origin/main and origin/master exists.
 wf_default_ref() { # repo-dir -> origin/<default>
   local r b
-  r=$(git -C "$1" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null) && [ -n "$r" ] \
+  r=$(git -C "$1" rev-parse -q --verify --abbrev-ref origin/HEAD 2>/dev/null) && [ -n "$r" ] \
     && { printf '%s\n' "$r"; return 0; }
   if git -C "$1" remote set-head origin --auto >/dev/null 2>&1; then
-    r=$(git -C "$1" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null) && [ -n "$r" ] \
+    r=$(git -C "$1" rev-parse -q --verify --abbrev-ref origin/HEAD 2>/dev/null) && [ -n "$r" ] \
       && { printf '%s\n' "$r"; return 0; }
   fi
   for b in origin/main origin/master; do
