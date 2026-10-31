@@ -12,8 +12,9 @@
 # version and gets updates through `claude plugin update`.
 #
 # Idempotent: a marketplace already registered under this name and a plugin already
-# installed are left as they are. Needs the `claude` CLI on PATH. Exits 0 on success, 1 when
-# `claude` is missing or a step fails, 64 on usage.
+# installed are left as they are. Needs the `claude` CLI and `jq` on PATH (the checks read
+# `claude ... --json`). Exits 0 on success, 1 when either is missing or a step fails, 64 on
+# usage.
 
 set -euo pipefail
 
@@ -37,6 +38,7 @@ say() { printf '%s\n' "$*"; }
 run() { if $dry_run; then say "  would: $*"; else "$@"; fi; }
 
 command -v claude >/dev/null 2>&1 || { say "claude is not on PATH; install Claude Code first" >&2; exit 1; }
+command -v jq >/dev/null 2>&1 || { say "jq is not on PATH; the installer reads claude's --json output with it" >&2; exit 1; }
 
 points_here() { # <link> -> 0 when it is a symlink into this checkout
   [[ -L "$1" ]] || return 1
