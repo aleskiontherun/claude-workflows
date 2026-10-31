@@ -57,19 +57,14 @@ share; nothing restates them.
 
 **Hook** in `hooks/` — `readonly-guard.sh` runs before every Bash call and, when the
 caller is one of the five review agents (`reviewer`, `validator`, `plan-reviewer`,
-`plan-validator`, `fold-checker`), holds the command to a small grammar — plain words,
-quoted strings, pipes and `&&`, redirection only to `/dev/null`, nothing bash would expand
-or substitute — and allows only read-only forms of `git`, `gh`, `sort`, `uniq` and a list
-of plain filters, denying anything else with the reason — including the environment
-variables and `git -c` keys a call may set, since a pager or an external diff is a program
-too. Every check is an allowlist, down to the option: where a program has any option that
-writes, changes a ref or runs something, each option it is given must appear on that
-program's list by its full spelling, so an unknown option, or an abbreviation of a known
-one, is denied rather than reasoned about. The git subcommands whose reading and writing
-forms differ by an operand (`branch`, `tag`, `config`, `remote`) are out, as are `sed`,
-`awk`, `curl`, `find` and `rg`: the agents have `Read`, `Grep`, `Glob` and `WebFetch` for
-what those did. Its header lists the grammar and the allowlist; `readonly-guard.test.sh`
-pins them.
+`plan-validator`, `fold-checker`), denies the forms that would change the branch under
+review, with the reason: a redirection to a file, a `$(...)` or backtick, the programs
+that write or delete files, edit in place, run code, build, test, format or install, the
+git subcommands that touch the checkout, the index, refs, config or the remote, and the
+gh actions that change something on GitHub. Everything else passes. It is a guardrail
+against a cooperative agent's mistakes, not a sandbox: a command that gets past it only
+by being written to get past it is outside its scope. Its header lists what is denied;
+`readonly-guard.test.sh` pins it.
 
 **Scripts** in `bin/` — deterministic checks the skills run instead of spending a reviewer
 round on them. Each has a header with usage and exit codes, and a `.test.sh` beside it. The

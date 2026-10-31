@@ -1,5 +1,5 @@
 {
-  "description": "Keeps ontherun's read-only agents read-only: every Bash call made by reviewer, validator, plan-reviewer, plan-validator or fold-checker is checked against an allowlist of read-only commands and denied otherwise. Calls from anyone else pass through untouched.",
+  "description": "Keeps ontherun's read-only agents read-only: every Bash call made by reviewer, validator, plan-reviewer, plan-validator or fold-checker is denied when it would write a file, change the checkout, its refs or the remote, run code or a build, or change something on GitHub. Calls from anyone else pass through untouched.",
   "hooks": {
     "PreToolUse": [
       {

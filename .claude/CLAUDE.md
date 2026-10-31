@@ -22,8 +22,12 @@ warns about it.
   skills never pass review criteria in a prompt. Agents are spawned by their namespaced name,
   `ontherun:<agent>`, and the skills say so at each spawn site.
 - **The read-only agents are enforced by `hooks/readonly-guard.sh`**, not by their `tools:`
-  line — a `Bash(pattern)` entry there is undocumented and unenforced. Adding a command one of
-  those agents needs means extending the guard's allowlist and its test together.
+  line — a `Bash(pattern)` entry there is undocumented and unenforced. The guard is a
+  guardrail against a cooperative agent's write and exec mistakes, not a sandbox: it denies
+  the forms such an agent reaches for by name and lets everything else through. A finding
+  against it is a write a well-meaning agent would plausibly run that it lets through; one
+  that needs the agent to deliberately evade it is out of scope. A form added to the guard
+  is added to its test in the same change.
 - **Scripts**: every `bin/*.sh` and `hooks/*.sh` has a `.test.sh` beside it; run
   `bin/run-tests.sh` and `shellcheck bin/*.sh hooks/*.sh install.sh` after any change. Keep
   the header comment (usage, exit codes, env) current.
