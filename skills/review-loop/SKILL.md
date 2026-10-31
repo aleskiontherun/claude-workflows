@@ -225,12 +225,8 @@ Depends on `reviewer` and `validator`, installed with this skill as part of the 
 plugin. Their criteria live in those files, outside both the implementer's and this skill's
 control.
 
-Both are read-only. Their `tools:` frontmatter gives them `Bash`, and the plugin's
-`PreToolUse` hook (`hooks/readonly-guard.sh`) denies the Bash calls from them that would
-change the branch under review — a write to a file, a git subcommand that touches the
-checkout or its refs, a test or build run, a gh action that changes something on GitHub. A
-denied command comes back to the agent with the reason; it is not a sign the review is
-broken.
+Both are read-only by their own instructions: their `tools:` frontmatter gives them `Bash`
+for `git` and `gh` reads, and nothing but their body keeps them from writing.
 
 ## Where the cost goes
 

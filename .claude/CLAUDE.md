@@ -12,25 +12,20 @@ warns about it.
   file; a reference file is read raw, so it says "the plugin root, the parent of this file's
   `reference/` directory" instead. A restatement is a second place for the rule to go stale;
   delete it rather than keep it in step.
-- **Generic only.** Nothing that gets installed — `skills/`, `agents/`, `reference/`, `bin/`,
-  `hooks/` — names a particular project, repo, stack, or incident; example values in samples
-  are fine. `README.md`'s migration table is the one place an earlier project is named.
+- **Generic only.** Nothing that gets installed — `skills/`, `agents/`, `reference/`, `bin/` — names
+  a particular project, repo, stack, or incident; example values in samples are fine. `README.md`'s migration table is the one place an earlier project is named.
   Project specifics come from the project's own `AGENTS.md` / `CLAUDE.md` / `CONTRIBUTING.md`
   / `DECISIONS.md` at run time (`reference/project-docs.md`).
 - **Prose says what and why, in the present tense** — never what a file used to say.
 - **Agents' criteria stay in the agent files**, outside the control of the party they review;
   skills never pass review criteria in a prompt. Agents are spawned by their namespaced name,
   `ontherun:<agent>`, and the skills say so at each spawn site.
-- **The read-only agents are enforced by `hooks/readonly-guard.sh`**, not by their `tools:`
-  line — a `Bash(pattern)` entry there is undocumented and unenforced. The guard is a
-  guardrail against a cooperative agent's write and exec mistakes, not a sandbox: it denies
-  the forms such an agent reaches for by name and lets everything else through. A finding
-  against it is a write a well-meaning agent would plausibly run that it lets through; one
-  that needs the agent to deliberately evade it is out of scope. A form added to the guard
-  is added to its test in the same change.
-- **Scripts**: every `bin/*.sh` and `hooks/*.sh` has a `.test.sh` beside it; run
-  `bin/run-tests.sh` and `shellcheck bin/*.sh hooks/*.sh install.sh` after any change. Keep
-  the header comment (usage, exit codes, env) current.
+- **The read-only agents are read-only by their prose**, not by their `tools:` line — a
+  `Bash(pattern)` entry there is undocumented and unenforced — and no hook enforces it
+  either: each agent's body says it writes nothing, as the verifier's does.
+- **Scripts**: every `bin/*.sh` has a `.test.sh` beside it; run `bin/run-tests.sh` and
+  `shellcheck bin/*.sh install.sh` after any change. Keep the
+  header comment (usage, exit codes, env) current.
 - **Checks for this repo**: the two commands above, `claude plugin validate --strict .` and
   `claude plugin validate --strict .claude-plugin/plugin.json`, `./install.sh --dry-run`, and
   `claude --plugin-dir "$PWD" plugin details ontherun` for the component inventory and token cost.
@@ -40,4 +35,4 @@ warns about it.
 - **Releases**: bump `version` in `.claude-plugin/plugin.json` — users who installed from
   GitHub stay on the old version until it changes — and tag with `claude plugin tag`.
 - Renaming or adding a skill or agent: update `README.md`'s tables and every `ontherun:<name>` or
-  `${CLAUDE_PLUGIN_ROOT}/…` path that names it; the guard's agent list if it is read-only.
+  `${CLAUDE_PLUGIN_ROOT}/…` path that names it.

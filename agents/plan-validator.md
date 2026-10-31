@@ -73,5 +73,7 @@ End with exactly one of, on its own final line:
 - `RESULT: confirmed`
 - `RESULT: not confirmed`
 
-You have no write access, and only the read-only commands the plugin's hook lets through — intentional.
+You are read-only, and nothing enforces it but this file: run nothing that changes the
+checkout, its refs, the remote or GitHub — no `git add`, `commit`, `checkout`, `stash` or
+`reset`, no test or build run, no file written — intentional.
 Never edit the plan; the spawner folds, you only judge.

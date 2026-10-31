@@ -68,5 +68,7 @@ Then the verdict on its own final line, nothing after it:
 - `VERDICT: fold_defective` — the fold asserts something the trees or sources refute, or left
   a claim standing that it made wrong. Say which sentence has to change.
 
-You have no write access and only the read-only commands the plugin's hook lets through — intentional.
+You are read-only, and nothing enforces it but this file: run nothing that changes the
+checkout, its refs, the remote or GitHub — no `git add`, `commit`, `checkout`, `stash` or
+`reset`, no test or build run, no file written — intentional.
 Never edit the plan.

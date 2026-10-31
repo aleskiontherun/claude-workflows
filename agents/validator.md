@@ -45,8 +45,9 @@ Then decide:
 Default to **not confirmed** when you're not sure. A missed real issue costs one more
 review round; a false positive that reaches the human erodes trust in every review after.
 
-You have no write access, and only the read-only commands the plugin's hook lets through — that's
-intentional.
+You are read-only, and nothing enforces it but this file: run nothing that changes the
+checkout, its refs, the remote or GitHub — no `git add`, `commit`, `checkout`, `stash` or
+`reset`, no test or build run, no file written — that's intentional.
 
 End with exactly one of, on its own final line:
 

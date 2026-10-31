@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Run every *.test.sh beside this file and in ../hooks, each in its own process, and report
-# the ones that failed.
+# Run every *.test.sh beside this file, each in its own process, and report the ones that
+# failed.
 #
 #   run-tests.sh [-v]
 #
@@ -20,7 +20,7 @@ esac
 
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 failed=()
-for t in "$here"/*.test.sh "$here"/../hooks/*.test.sh; do
+for t in "$here"/*.test.sh; do
   name=${t##*/}
   if out=$("$t" 2>&1); then status=ok; else status=FAIL; failed+=("$name"); fi
   if $verbose; then printf '%s\n' "$out"; fi

@@ -55,17 +55,6 @@ share; nothing restates them.
 | `implementer-protocol.md` | everything an implementer agent does |
 | `verification-walk.md` | how `conduct` walks a plan's `## Verification` scenarios after its last PR merges |
 
-**Hook** in `hooks/` — `readonly-guard.sh` runs before every Bash call and, when the
-caller is one of the five review agents (`reviewer`, `validator`, `plan-reviewer`,
-`plan-validator`, `fold-checker`), denies the forms that would change the branch under
-review, with the reason: a redirection to a file, a `$(...)` or backtick, the programs
-that write or delete files, edit in place, run code, build, test, format or install, the
-git subcommands that touch the checkout, the index, refs, config or the remote, and the
-gh actions that change something on GitHub. Everything else passes. It is a guardrail
-against a cooperative agent's mistakes, not a sandbox: a command that gets past it only
-by being written to get past it is outside its scope. Its header lists what is denied;
-`readonly-guard.test.sh` pins it.
-
 **Scripts** in `bin/` — deterministic checks the skills run instead of spending a reviewer
 round on them. Each has a header with usage and exit codes, and a `.test.sh` beside it. The
 skills call them by their full path under the plugin root; `bin/` is also on the Bash tool's
@@ -87,7 +76,7 @@ named anything other than `plans`, set `ONTHERUN_WORKSPACE` to the root.
 ## Install
 
 Requirements: a current Claude Code; `git` 2.31+; the GitHub CLI `gh`, authenticated (`gh auth
-status`); `jq`; and for the scripts and the hook `bash` 3.2+, `awk`, `perl` and `ruby`
+status`); `jq`; and for the scripts `bash` 3.2+, `awk`, `perl` and `ruby`
 (`ontherun-plan-lint.sh`) — all present on a stock macOS with Homebrew's `gh` and `jq`.
 
 **From GitHub**, pinned to the version in `.claude-plugin/plugin.json` and upgraded with
@@ -122,7 +111,7 @@ plugin in one session without installing it: `claude --plugin-dir <checkout>`.
 CI runs these on every push and pull request:
 
 ```bash
-shellcheck bin/*.sh hooks/*.sh install.sh
+shellcheck bin/*.sh install.sh
 ```
 
 ```bash
@@ -274,10 +263,10 @@ with your go-ahead rewrites the Status and moves the plan to `plans/done/`.
 
 ## Notes
 
-- **Read-only agents are enforced by the hook**, not by their `tools:` line — a `Bash(pattern)`
-  entry there is undocumented and unenforced, so the agents get plain `Bash` and
-  `hooks/readonly-guard.sh` decides per call. `verifier` and the implementers run the
-  project's own checks, so they are not guarded; the verifier's prose keeps it read-only.
+- **Read-only agents are read-only by their prose**, not by their `tools:` line — a `Bash(pattern)`
+  entry there is undocumented and unenforced, and no hook enforces it either: the agents get
+  plain `Bash` for `git` and `gh` reads, and each one's body says it writes nothing, as the
+  verifier's does.
 - **Claude Code tools the skills rely on**: `AskUserQuestion` (`plan`, `conduct`),
   `SendMessage` and `TaskStop` (`conduct`, to resume implementers and replace monitors),
   and `Monitor` with `PushNotification` for the merge queue — without those two, run

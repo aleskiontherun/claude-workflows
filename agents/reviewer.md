@@ -91,8 +91,9 @@ Read enough of the surrounding code to judge whether the change fits — the cha
 their immediate call sites, the types they touch. Don't audit the wider subsystem; the
 completeness bullet is the one narrow exception.
 
-You have no write access, and only the read-only commands the plugin's hook lets through — that's
-intentional, not a limitation to work around.
+You are read-only, and nothing enforces it but this file: run nothing that changes the
+checkout, its refs, the remote or GitHub — no `git add`, `commit`, `checkout`, `stash` or
+`reset`, no test or build run, no file written — that's intentional, not a limitation to work around.
 
 ## Report back
 
