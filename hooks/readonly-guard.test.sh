@@ -173,6 +173,18 @@ expect deny  $R 'ls | xargs grep x'
 expect deny  $R 'nohup ls &'
 expect deny  $R 'command rm x'
 expect deny  $R 'time rm x'
+expect deny  $R 'time -p rm x'
+expect deny  $R 'time -o t.txt ls'                                   # GNU time writes the timing to a file
+expect deny  $R 'nice -n 10 make'
+expect deny  $R 'nice -10 rm x'
+expect deny  $R 'timeout 300 npm test'
+expect deny  $R 'timeout -k 5 60 pytest -q'
+expect deny  $R 'timeout --preserve-status 10s ./run.sh'
+expect allow $R 'time -p ls'
+expect allow $R 'nice -n 5 git -C /work/acme-api status'
+expect allow $R 'timeout 60 git -C /work/acme-api log -1'
+expect allow $R 'timeout -s INT 30 grep -r x /work/acme-api/src'
+expect allow $R 'timeout'
 
 # ------------------------------------------------------------- what writes a file
 expect deny  $R 'ls > out.txt'

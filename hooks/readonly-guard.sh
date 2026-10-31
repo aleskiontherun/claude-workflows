@@ -36,7 +36,9 @@
 #   - shells and interpreters, since nothing they run is read: bash sh zsh dash ksh fish
 #     eval exec source . python python2 python3 node ruby perl php deno bun lua Rscript
 #     osascript
-#   - wrappers that run another program: sudo doas env xargs nohup setsid watch parallel
+#   - wrappers that run another program: sudo doas env xargs nohup setsid watch parallel;
+#     time, nice and timeout are read through to the program they run (and time -o, which
+#     writes a file, is denied)
 #   - editors and openers: vi vim nvim nano emacs ed ex code subl open xdg-open
 #   - build, test, format and package runners -- the skill that spawned the agent ran the
 #     checks and reports them: make cmake ninja npm npx yarn pnpm pip pip3 pipx poetry uv
@@ -270,17 +272,44 @@ check_gh() { # words after `gh`
   return 0
 }
 
+drop_words() { # n -> remove the first n words of WORDS (bash 3.2: an empty slice is unbound)
+  if [ ${#words[@]} -gt "$1" ]; then words=("${words[@]:$1}"); else words=(); fi
+}
+
 check_segment() { # the words of one simple command, unquoted
   local -a words=("$@")
   local x y n=0
-  # Assignments, harmless wrappers and the shell's own keywords before the program.
+  # Assignments, harmless wrappers and the shell's own keywords before the program. time,
+  # nice and timeout are read through, past their options and timeout's duration, to the
+  # program they run: `timeout 300 npm test` is `npm test`.
   while [ ${#words[@]} -gt 0 ]; do
     case ${words[0]} in
-      [A-Za-z_]*=*) ;;
-      time|nice|command|builtin|if|then|else|elif|while|until|do|for|case|'!'|'{'|'}'|'('|')') ;;
+      [A-Za-z_]*=*|command|builtin|if|then|else|elif|while|until|do|for|case|'!'|'{'|'}'|'('|')') drop_words 1 ;;
+      time)
+        drop_words 1
+        while [ ${#words[@]} -gt 0 ]; do case ${words[0]} in
+          -o|-o?*|--output|--output=*|-a|--append) deny "\`time ${words[0]}\` writes a file" ;;
+          -f|--format) drop_words 2 ;;
+          -*) drop_words 1 ;;
+          *) break ;;
+        esac; done ;;
+      nice)
+        drop_words 1
+        while [ ${#words[@]} -gt 0 ]; do case ${words[0]} in
+          -n|--adjustment) drop_words 2 ;;
+          -*) drop_words 1 ;;
+          *) break ;;
+        esac; done ;;
+      timeout)
+        drop_words 1
+        while [ ${#words[@]} -gt 0 ]; do case ${words[0]} in
+          -k|--kill-after|-s|--signal) drop_words 2 ;;
+          -*) drop_words 1 ;;
+          *) break ;;
+        esac; done
+        drop_words 1 ;;   # the duration
       *) break ;;
     esac
-    words=("${words[@]:1}")
   done
   [ ${#words[@]} -gt 0 ] || return 0
   local prog=${words[0]}
