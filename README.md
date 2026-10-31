@@ -53,6 +53,7 @@ share; nothing restates them.
 | `plan-format.md` | the plan document: Status block and ledger, `## State` DAG, node kinds, statuses, optional sections |
 | `plan-review-loop.md` | the loop `plan` and `conduct` run over plans |
 | `implementer-protocol.md` | everything an implementer agent does |
+| `verification-walk.md` | how `conduct` walks a plan's `## Verification` scenarios after its last PR merges |
 
 **Hook** in `hooks/` — `readonly-guard.sh` runs before every Bash call and, when the
 caller is one of the five review agents (`reviewer`, `validator`, `plan-reviewer`,

@@ -228,7 +228,7 @@ expect deny  $R 'git -C /work/acme-api remote -v'
 expect deny  $R 'git -C /work/acme-api remote get-url origin'
 expect deny  $R 'git -C /work/acme-api remote add up git@x:y/z'
 expect deny  $R 'git -C /work/acme-api symbolic-ref --short refs/remotes/origin/HEAD'
-expect allow $R 'git -C /work/acme-api rev-parse --abbrev-ref origin/HEAD'          # workspace.md's default-branch step
+expect allow $R 'git -C /work/acme-api rev-parse -q --verify --abbrev-ref origin/HEAD'   # workspace.md's default-branch step
 expect allow $R 'git -C /work/acme-api show-ref --verify -q refs/remotes/origin/main'   # and its fallback
 expect deny  $R 'git -C /work/acme-api symbolic-ref HEAD refs/heads/other'
 expect deny  $R 'git -C /work/acme-api worktree list'

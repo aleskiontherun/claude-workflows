@@ -11,8 +11,9 @@ it to go stale.
   on the working directory: checkouts can nest, and a bare `git` addresses whichever repo
   happens to contain the cwd.
 - **Default branch** — resolved per repo, never assumed:
-  `git -C <repo> rev-parse --abbrev-ref origin/HEAD` prints `origin/main` or similar. If it
-  fails, the clone has no `origin/HEAD`: a skill or script runs
+  `git -C <repo> rev-parse -q --verify --abbrev-ref origin/HEAD` prints `origin/main` or
+  similar, and nothing when the clone has no `origin/HEAD` (without `-q --verify`, git
+  echoes the name it was given before its error). Then: a skill or script runs
   `git -C <repo> remote set-head origin --auto` once and retries, while a read-only agent
   (the guard denies `git remote`) skips the repair; either then takes whichever of
   `origin/main` and `origin/master` exists (`git -C <repo> show-ref --verify -q
