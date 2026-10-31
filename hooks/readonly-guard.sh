@@ -63,7 +63,12 @@
 #     refresh / setup-git / token, api with a method other than GET or with a body,
 #     browse, and --web / -w
 #
-# A program named by path counts by its base name: /bin/rm is rm.
+# A program named by path counts by its base name: /bin/rm is rm. A program from the tree
+# -- a relative path, an absolute path outside /bin, /sbin, /usr/bin, /usr/sbin,
+# /usr/local/bin, /usr/local/sbin, /opt/homebrew/bin, /opt/homebrew/sbin and
+# /opt/local/bin, or a name ending in a script extension (.sh .bash .zsh .py .rb .js .mjs
+# .cjs .ts .pl .php) -- is denied: `bin/run-tests.sh` or `./install.sh` is the project's
+# own check, which the skill that spawned the agent ran.
 #
 # Needs jq and perl. Always exits 0; the decision is the JSON, and a hook that exits
 # non-zero for a parse error would block every Bash call in the session. Without jq the
@@ -180,15 +185,23 @@ check_git() { # words after `git`
       for x in ${rest[@]+"${rest[@]}"}; do [ "$x" = --stdout ] && return 0; done
       deny "\`git format-patch\` writes patch files; add --stdout" ;;
     branch)
+      # A bare operand creates the branch (`git branch tmp origin/x`); with a listing option
+      # it is a pattern or a commit to filter by.
+      local listing=no
       for x in ${rest[@]+"${rest[@]}"}; do case $x in
         -d|-D|-m|-M|-c|-C|-f|-u|--delete|--move|--copy|--force|--set-upstream-to|--set-upstream-to=*|--unset-upstream|--edit-description|--track|--no-track)
           deny "\`git branch $x\` changes a branch; list with \`git branch\` or \`--list\`" ;;
-      esac; done ;;
+        -l|--list|-a|--all|-r|--remotes|--contains|--no-contains|--merged|--no-merged|--points-at|--show-current|--contains=*|--no-contains=*|--merged=*|--no-merged=*|--points-at=*) listing=yes ;;
+      esac; done
+      [ $n -eq 0 ] || [ $listing = yes ] || deny "\`git branch $act\` creates a branch; list with \`git branch\` or \`--list\`" ;;
     tag)
+      local listing=no
       for x in ${rest[@]+"${rest[@]}"}; do case $x in
         -a|-s|-u|-d|-f|-m|-F|-e|--annotate|--sign|--local-user|--local-user=*|--delete|--force|--message|--message=*|--file|--file=*|--edit)
           deny "\`git tag $x\` creates or deletes a tag; list with \`git tag\` or \`--list\`" ;;
-      esac; done ;;
+        -l|--list|-n|-n?*|--contains|--no-contains|--merged|--no-merged|--points-at|--contains=*|--no-contains=*|--merged=*|--no-merged=*|--points-at=*) listing=yes ;;
+      esac; done
+      [ $n -eq 0 ] || [ $listing = yes ] || deny "\`git tag $act\` creates a tag; list with \`git tag\` or \`--list\`" ;;
     remote)
       case $act in add|remove|rm|rename|set-url|set-head|set-branches|prune|update)
         deny "\`git remote $act\` changes the remotes; \`git remote -v\`, \`show\` and \`get-url\` read them" ;;
@@ -272,6 +285,22 @@ check_segment() { # the words of one simple command, unquoted
   [ ${#words[@]} -gt 0 ] || return 0
   local prog=${words[0]}
   prog=${prog#"${prog%%[!(]*}"}; prog=${prog%"${prog##*[!)]}"}   # (cd x && ls) -> cd, ls
+  # A program from the tree -- `bin/run-tests.sh`, `./install.sh`, `scripts/lint` -- is the
+  # project's own check or tool, which the skill that spawned the agent ran. By a relative
+  # path, by an absolute path outside the system's bin directories, or by a script
+  # extension, it is denied; /bin/rm and /usr/bin/grep count by their base name.
+  case $prog in
+    [\<\>]*|[0-9][\<\>]*) ;;   # a redirection word, left standing when its `&` split the segment
+    */*)
+      case $prog in
+        /bin/*|/sbin/*|/usr/bin/*|/usr/sbin/*|/usr/local/bin/*|/usr/local/sbin/*|/opt/homebrew/bin/*|/opt/homebrew/sbin/*|/opt/local/bin/*) ;;
+        *) deny "\`$prog\` runs a program from the tree; the skill that spawned you ran the checks and reports them" ;;
+      esac ;;
+  esac
+  case $prog in
+    *.sh|*.bash|*.zsh|*.py|*.rb|*.js|*.mjs|*.cjs|*.ts|*.pl|*.php)
+      deny "\`$prog\` runs a script; the skill that spawned you ran the checks and reports them" ;;
+  esac
   prog=${prog##*/}                                               # /bin/rm -> rm
   local -a rest=("${words[@]:1}")
   case $prog in
