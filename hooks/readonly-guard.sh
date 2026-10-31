@@ -17,7 +17,11 @@
 #
 #   - words made of letters, digits and `_ . / : @ = , + % ^ ~ -`, single-quoted strings,
 #     and double-quoted strings that contain no `$` and no backtick (a backslash inside them
-#     escapes the next character, as in bash);
+#     escapes the next character, as in bash); neither kind of string spans a line, and no
+#     control character but tab appears anywhere, since the checks hand each simple
+#     command's words on as a line of their own;
+#   - an unquoted `~` only inside a word (`HEAD~1`), never at its start or after `=` or `:`,
+#     where bash expands it before git sees the path;
 #   - the separators `|`, `||`, `&&`, `;`, `&` and newline, which split it into simple
 #     commands;
 #   - the redirections `>/dev/null`, `2>/dev/null`, `&>/dev/null` and `2>&1`, and no other.
@@ -103,12 +107,16 @@ deny() { # reason
 
 # Read the command against the grammar above and split it into simple commands. Prints one
 # status line -- OK, or QUOTE for an unbalanced quote, EXPANSION for a `$` or backtick inside
-# double quotes, CHAR <c> for the first character outside the grammar -- then, after OK, one
-# line per simple command with its words, unquoted, separated by \x1f.
+# double quotes, CONTROL for a control character other than tab or newline, NEWLINE for a
+# newline inside quotes, TILDE for a `~` bash would expand, CHAR <c> for the first character
+# outside the grammar -- then, after OK, one line per simple command with its words,
+# unquoted, separated by \x1f. The output framing is a newline per command and \x1f per
+# word, which is why neither may occur inside a word.
 read_commands() {
   GUARD_CMD=$cmd perl -e '
     my $raw = $ENV{GUARD_CMD};
     my $len = length $raw;
+    if ($raw =~ /[\x00-\x08\x0b-\x1f\x7f]/) { print "CONTROL\n"; exit 0 }
     # Mask the quoted strings length for length, so that every position of the mask is the
     # same position of the raw text: a quote inside the other kind of quote is text, and
     # the only `$` or backtick a double-quoted string may hold is an escaped one.
@@ -118,6 +126,7 @@ read_commands() {
       if ($c eq "\x27") {
         my $j = index($raw, "\x27", $i + 1);
         if ($j < 0) { print "QUOTE\n"; exit 0 }
+        if (index(substr($raw, $i, $j - $i), "\n") >= 0) { print "NEWLINE\n"; exit 0 }
         $m .= "\x27" . ("Q" x ($j - $i - 1)) . "\x27"; $i = $j + 1; next;
       }
       if ($c eq q(")) {
@@ -127,6 +136,7 @@ read_commands() {
           if ($d eq "\\") { $j += 2; next }
           last if $d eq q(");
           if ($d eq "\$" || $d eq "`") { print "EXPANSION\n"; exit 0 }
+          if ($d eq "\n") { print "NEWLINE\n"; exit 0 }
           $j++;
         }
         if ($j >= $len) { print "QUOTE\n"; exit 0 }
@@ -139,6 +149,8 @@ read_commands() {
     $m =~ s/(?<![^\s])([0-9]?&?>>?\s*\/dev\/null|2>&1)(?![^\s;|&])/ " " x length($1) /ge;
     (my $t = $m) =~ s/\|\||&&|[|;&\n]/ /g;
     if ($t =~ /([^A-Za-z0-9 \t_.\/:@=,+%^~\x27"Q-])/) { print "CHAR $1\n"; exit 0 }
+    # bash expands a `~` that starts a word, or follows the `=` or a `:` of an assignment.
+    if ($m =~ /(?:^|[\s;|&=:])~/) { print "TILDE\n"; exit 0 }
     print "OK\n";
     # Split on the separators; each piece of the mask is the same piece of the raw text, and
     # its words sit where the mask shows non-blank runs.
@@ -473,6 +485,9 @@ while IFS= read -r line; do
       OK) ;;
       QUOTE) deny "a quote is not closed" ;;
       EXPANSION) deny "a \$ or backtick inside double quotes would expand or substitute; single-quote it" ;;
+      CONTROL) deny "a control character is not allowed; write the command with printable characters and tabs" ;;
+      NEWLINE) deny "a quoted string spans lines; keep each word on one line (a git format takes %n)" ;;
+      TILDE) deny "an unquoted ~ at the start of a word, or after = or :, is expanded by bash; write the path out, or quote the ~" ;;
       'CHAR $'|'CHAR `') deny "a \$ or backtick outside quotes would expand or substitute; write the value out, or single-quote it" ;;
       'CHAR <'|'CHAR >') deny "redirecting to or from a file is not allowed (only >/dev/null, 2>/dev/null, &>/dev/null and 2>&1)" ;;
       'CHAR ('|'CHAR )'|'CHAR {'|'CHAR }') deny "a subshell, group, brace expansion or function definition is not allowed; write the commands out, joined by && or |" ;;

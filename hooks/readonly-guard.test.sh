@@ -103,7 +103,10 @@ expect allow $R "gh api 'repos/acme/acme-api/pulls?state=all'"
 expect allow $R 'grep -c ">" /work/acme-api/f'
 expect allow $R "grep -c '<' /work/acme-api/f 2>/dev/null"
 expect allow $R 'test -d /work/acme-api/src'
-expect allow $R 'echo ~'
+expect deny  $R 'echo ~'                                           # bash expands it; write the path out
+expect allow $R "echo '~'"
+expect allow $R 'git -C /work/acme-api log HEAD~ HEAD~1..HEAD'
+expect allow $R 'git -C /work/acme-api log --format=%h%n%s -3'
 expect allow $R 'git -C /work/acme-api log --format=%h%x09%s -3'
 expect allow $R 'GIT_PAGER=cat git -C /work/acme-api log -1'
 expect allow $R 'LC_ALL=C sort /work/acme-api/words.txt | uniq -c'
@@ -123,6 +126,19 @@ expect deny  $R 'echo "$(git -C /work/acme-api rev-parse HEAD)"'
 expect deny  $R 'cat `ls`'
 expect deny  $R 'diff <(git show a:f) <(git show b:f)'
 expect deny  $R "git -C /work log \$'--output=/tmp/evil'"
+expect deny  $R 'git -C ~+/fixtures/x.git diff HEAD~1 HEAD'
+expect deny  $R 'git -C ~ log'
+expect deny  $R 'echo a=~'
+expect deny  $R 'echo PATH=a:~'
+# The words reach the checks one simple command per line, \x1f between words: neither may
+# sit inside a quoted word, or one checked command is not the one bash runs.
+expect deny  $R $'git -C /work/repo log -1 --format=\'%h\necho\' --output=/tmp/x'
+expect deny  $R $'git -C /work/repo log -1 --format="%h\necho" --output=/tmp/x'
+expect deny  $R $'echo \'a\x1fb\''
+expect deny  $R $'echo "a\x1fb"'
+expect deny  $R $'echo \'a\x01b\''
+expect deny  $R $'echo a\x1fb'
+expect deny  $R $'echo "a\\\nb"'                                    # a line continuation inside quotes
 expect deny  $R 'git -C /work log --{output=/tmp/evil,}'
 expect deny  $R "printf evil | sort \$'-o'/tmp/evil"
 expect deny  $R 'cat "$HOME/.ssh/id_rsa"'
@@ -309,6 +325,7 @@ expect_cwd() { # allow|deny cwd command
 expect_cwd deny  "$GUARD_TMP/repo" 'git -C fixtures/x.git log'
 expect_cwd allow "$GUARD_TMP/repo" 'git -C fixtures log'
 expect_cwd allow "$GUARD_TMP/repo" 'git -C nowhere log'      # git's own error, before any config is read
+expect_cwd deny  "$GUARD_TMP/repo" 'git -C ~+/fixtures/x.git log'   # bash would expand ~+ to this cwd
 expect_cwd deny  "$X" 'git log'                              # no -C at all
 expect_cwd deny  "$X/sub" 'git status'
 got=$(cd "$GUARD_TMP/repo" && decision $R 'git -C fixtures/x.git log')
