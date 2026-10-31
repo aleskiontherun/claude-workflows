@@ -1,0 +1,17 @@
+{
+  "name": "claude-workflows",
+  "owner": {
+    "name": "Aleksei Vesnin",
+    "url": "https://github.com/aleskiontherun"
+  },
+  "description": "Agentic development workflows for Claude Code: independent review loops, plan-and-conduct across repos.",
+  "plugins": [
+    {
+      "name": "ontherun",
+      "source": "./",
+      "description": "Implement, review, plan and conduct work, where the party that did the work never judges it.",
+      "category": "workflow",
+      "tags": ["workflow", "code-review", "planning", "subagents"]
+    }
+  ]
+}

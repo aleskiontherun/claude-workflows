@@ -1,7 +1,7 @@
 # Acme launch (`acme-api` + `acme-web` + `acme-site`)
 
 **Status: promoted on 2026-09-11 by a `corrections_only` exit at round 3, and nothing
-has launched yet.** The plan is a fixture for wf-plan-lint.test.sh; of its 14 nodes, 9 are PRs, 3 are
+has launched yet.** The plan is a fixture for ontherun-plan-lint.test.sh; of its 14 nodes, 9 are PRs, 3 are
 things the conductor does from its own session, and 2 are the owner's.
 
 **Phase 1 — Before launch**

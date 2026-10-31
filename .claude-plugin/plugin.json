@@ -1,0 +1,14 @@
+{
+  "name": "ontherun",
+  "displayName": "ontherun",
+  "version": "0.1.0",
+  "description": "Implement, review, plan and conduct work with Claude Code, where the party that did the work never judges it: clean-context reviewers, a validator per finding, plans as a DAG of PR-sized nodes conducted wave by wave with a merge queue per repo.",
+  "author": {
+    "name": "Aleksei Vesnin",
+    "url": "https://github.com/aleskiontherun"
+  },
+  "homepage": "https://github.com/aleskiontherun/claude-workflows",
+  "repository": "https://github.com/aleskiontherun/claude-workflows",
+  "license": "MIT",
+  "keywords": ["workflow", "code-review", "planning", "subagents", "worktrees", "merge-queue"]
+}

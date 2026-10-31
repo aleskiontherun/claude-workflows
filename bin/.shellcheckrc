@@ -1,2 +1,2 @@
-# Let shellcheck follow wf-lib.sh, which every wf- script sources, without -x.
+# Let shellcheck follow ontherun-lib.sh, which every ontherun- script sources, without -x.
 external-sources=true

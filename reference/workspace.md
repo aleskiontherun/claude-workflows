@@ -1,6 +1,6 @@
 # Workspace layout
 
-Every `wf-` skill, agent and script that touches plans, or more than one repository,
+Every skill, agent and script in this plugin that touches plans, or more than one repository,
 resolves the terms below the same way. This file is the only definition of them; the
 others point here rather than restate it, because a restated rule is a second place for
 it to go stale.
@@ -11,10 +11,14 @@ it to go stale.
   on the working directory: checkouts can nest, and a bare `git` addresses whichever repo
   happens to contain the cwd.
 - **Default branch** — resolved per repo, never assumed:
-  `git -C <repo> symbolic-ref --short refs/remotes/origin/HEAD` prints `origin/main` or
-  similar. If it fails, run `git -C <repo> remote set-head origin --auto` once and retry;
-  failing that, use whichever of `origin/main` and `origin/master` exists. The `wf-` files
-  write `origin/main` for short — read it as that repo's default branch.
+  `git -C <repo> rev-parse -q --verify --abbrev-ref origin/HEAD` prints `origin/main` or
+  similar, and nothing when the clone has no `origin/HEAD` (without `-q --verify`, git
+  echoes the name it was given before its error). Then: a skill or script runs
+  `git -C <repo> remote set-head origin --auto` once and retries, while a read-only agent
+  skips the repair (it writes a ref); either then takes whichever of
+  `origin/main` and `origin/master` exists (`git -C <repo> show-ref --verify -q
+  refs/remotes/origin/main`). The plugin's files write `origin/main` for short — read it as
+  that repo's default branch.
 - **Workspace root** — the directory plans, and the repos plan nodes land in, are named
   relative to.
 - **Plans directory** — `<workspace root>/plans/`, unless the instruction files at the
@@ -30,12 +34,13 @@ it to go stale.
 2. Otherwise walk up from the working directory, inclusive, and take the first directory
    that contains a `plans/` directory (or the one the instructions name). Stop at `$HOME`.
 3. Nothing found means there is no plans store yet. A skill that only reads plans says so
-   and stops; `wf-plan` offers to set one up (below) and asks which layout.
+   and stops; `plan` offers to set one up (below) and asks which layout.
 
-The scripts under `~/.claude/wf/bin/` resolve the root from the plan path they are given:
-`WF_WORKSPACE` when set, else the parent of the nearest enclosing directory named `plans` (from
+The scripts under the plugin's `bin/` — the plugin root is the parent of this file's
+`reference/` directory — resolve the root from the plan path they are given:
+`ONTHERUN_WORKSPACE` when set, else the parent of the nearest enclosing directory named `plans` (from
 a worktree of a workspace repo, in its main working tree), else the plan's git top level. **With
-a plans directory named anything else, set `WF_WORKSPACE` to the root** when running them. They
+a plans directory named anything else, set `ONTHERUN_WORKSPACE` to the root** when running them. They
 read the node checkouts under that root, so ledger links and the lint's ledger check need those
 checkouts present.
 
@@ -94,7 +99,7 @@ ordinary commit nobody else's branch depends on.
   their own. Push only when it has a remote and the user or the workspace instructions
   want that.
 - **Other work on a workspace repo** — its `CLAUDE.md`, tooling it tracks — is ordinary
-  work for `wf-implement` and `wf-review-loop`, run in their no-PR mode: on a branch,
+  work for `implement` and `review-loop`, run in their no-PR mode: on a branch,
   reviewed, pushed when there is a remote, no pull request.
 - **A repo can host a node** when its `origin` is on GitHub, accepts pull requests from
   this account, and has a default branch to cut from. Titles are semantic —

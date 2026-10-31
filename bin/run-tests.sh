@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Run every *.test.sh beside this file, each in its own process, and report the ones
-# that failed.
+# Run every *.test.sh beside this file, each in its own process, and report the ones that
+# failed.
 #
 #   run-tests.sh [-v]
 #

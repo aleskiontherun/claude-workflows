@@ -3,10 +3,10 @@
 A plan is a prose document a human reads and argues with. Its load-bearing parts are
 paragraphs of reasoning — owner decisions, trade-offs, rejected alternatives — not fields.
 
-What the format adds is one machine-readable section, `## State`, so that `wf-conduct` can
+What the format adds is one machine-readable section, `## State`, so that `conduct` can
 pick a plan up mid-flight without re-deriving the whole sequence from prose on every wake-up.
-**This file is the only definition of the format.** `wf-plan`, `wf-conduct`,
-`wf-verify-plan`, the agents and the scripts reference it rather than restate it. Where plans
+**This file is the only definition of the format.** `plan`, `conduct`,
+`verify-plan`, the agents and the scripts reference it rather than restate it. Where plans
 live, and which repos a node can land in, is `workspace.md` beside this file.
 
 ## The anatomy
@@ -73,7 +73,8 @@ A live plan has the same shape with each node's actual state:
 ````
 
 **The ledger of a plan with a `## State` block is generated, never written.**
-`~/.claude/wf/bin/wf-plan-ledger.sh <plan> --write` renders it from the block — one line
+`bin/ontherun-plan-ledger.sh <plan> --write` under the plugin root — the parent of this file's
+`reference/` directory — renders it from the block — one line
 per node, in block order, with the wording above and `blocked: <reason>`,
 `draft, waiting on the human`, `dropped` and `done` for the other statuses — and replaces
 whatever bullets sit between the Status paragraph and `## State`. Links come from each node
@@ -98,24 +99,24 @@ current state of the plan, never the story of how it got there**; that goes to
 
 **Once a plan is promoted, its Status carries one sentence naming the exit that promoted it** —
 `sound` or `corrections_only` and the round, or *promoted by ruling* (`plan-review-loop.md`,
-step 5). Every rewrite keeps that sentence: `wf-plan` and `wf-conduct` send a plan whose nodes
+step 5). Every rewrite keeps that sentence: `plan` and `conduct` send a plan whose nodes
 are all `pending` and whose Status names no such exit back to review.
 
 **Who writes which.**
 
-- `wf-conduct` owns **both** the block and the ledger, and writes only the block: it edits
-  the block, then regenerates the ledger. `wf-plan` authors the block when it writes or
+- `conduct` owns **both** the block and the ledger, and writes only the block: it edits
+  the block, then regenerates the ledger. `plan` authors the block when it writes or
   deepens the plan; from the first launch on, every change to it is the conductor's. A
   ledger bullet is never hand-edited — the next regeneration overwrites it — so whatever a
   bullet should say goes into the block (`reason`, `merged`) or into the prose.
-- `wf-verify-plan` rewrites **the Status verdict and prose**, by hand, from the tree, and
+- `verify-plan` rewrites **the Status verdict and prose**, by hand, from the tree, and
   leaves `## State` alone: its job is to establish what landed independently of the block.
   It regenerates the ledger only when the block matches the tree. Where they disagree, the
-  disagreement is its finding — reported, then reconciled by `wf-conduct` §2, or, for a plan
-  closing out as shipped, corrected by `wf-verify-plan` itself once the user has seen it.
+  disagreement is its finding — reported, then reconciled by `conduct` §2, or, for a plan
+  closing out as shipped, corrected by `verify-plan` itself once the user has seen it.
 
 **A block that disagrees with the tree is a finding, not corruption** — the block is a cache,
-the tree is the truth. A ledger that differs from `wf-plan-ledger.sh`'s rendering of its own
+the tree is the truth. A ledger that differs from `ontherun-plan-ledger.sh`'s rendering of its own
 block was hand-edited or left behind: correct the block, then regenerate.
 
 ## The state block
@@ -128,7 +129,7 @@ nodes:
     repo: acme-api
     title: "fix(auth): sweep expired authentication requests"
     needs: []
-    agent: wf-implementer
+    agent: implementer
     status: merged
     branch: claude/api-1-sweep-expired
     pr: 102
@@ -140,14 +141,14 @@ nodes:
     repo: acme-api
     title: "feat(users)!: account deletion with a grace period"
     needs: [api-1]
-    agent: wf-implementer-high
+    agent: implementer-high
     status: pending
   # ---- Phase 2: frontend ----
   - id: web-1
     repo: acme-web
     title: "feat(settings): delete your account"
     needs: [api-2]
-    agent: wf-implementer
+    agent: implementer
     status: pending
 ```
 
@@ -159,7 +160,7 @@ In the single-repo layout every node has `repo: .` and `repos: [.]`.
 | `repo` | The checkout the node's PR lands in, as a path relative to the workspace root, or `.` for the root itself (`workspace.md`). Never the plans repo. |
 | `title` | The PR title, so the conductor and the verifier search for the same string. |
 | `needs` | DAG edges — ids that must be *satisfied* first: `merged`, `done` or `dropped`. `[]` means it can start now. |
-| `agent` | Which agent definition implements it: `wf-implementer` or `wf-implementer-high`. Sets model and effort. |
+| `agent` | Which agent definition implements it: `implementer` or `implementer-high`. Sets model and effort. The conductor spawns it under the plugin's namespace, `ontherun:<agent>`. |
 | `status` | See *Statuses*. |
 | `branch`, `pr`, `sha` | Filled in as they become known. `sha` is the squash commit on the default branch. |
 | `merged` | `YYYY-MM-DD` the PR merged, written with `sha`; the ledger prints it. |
@@ -176,7 +177,7 @@ it here verbatim. It is a cache like `sha`: a `delivered` line says where to go 
 that the code is there. Its line numbers drift by construction — review rounds and the squash
 keep editing after the report — so hand on the named symbol, with the range as a hint.
 
-A `wf-verifier` proposing a block for a half-finished plan has no implementer report to copy,
+A `verifier` proposing a block for a half-finished plan has no implementer report to copy,
 and **leaves the field out rather than reconstructing one**: the field means *the implementer
 said so*. Its evidence list does that job instead. So a conductor writing a block from a
 verifier's proposal **carries over the `delivered` entries the plan already records** — a
@@ -214,7 +215,7 @@ consent to spend in this one.
 Two rules make non-PR nodes safe in a DAG:
 
 - **Every `setup` and `manual` node carries a `check:` line** — a command or observation that
-  proves it done. The conductor runs it before writing `done`, and `wf-verifier` re-runs it on
+  proves it done. The conductor runs it before writing `done`, and `verifier` re-runs it on
   a pickup. A node whose completion nothing can observe is not a node; write it as prose.
 - **`needs` treats `done` exactly as `merged`**, and `dropped` as satisfied. A `pr` node may
   need a `manual` node and the reverse.
@@ -237,7 +238,7 @@ once which node is waiting and on what, and doesn't nag.
 
 ## The block is a cache, never the truth
 
-**The tree decides; the block only decides what to re-check.** `wf-conduct` re-verifies
+**The tree decides; the block only decides what to re-check.** `conduct` re-verifies
 before it acts, and the block narrows that pass to the nodes plausibly in flight. A node the
 block calls `merged` still gets confirmed against `origin/<default>` before its dependents
 launch, because:
@@ -261,8 +262,8 @@ no `## State`. It carries instead:
 ## Open questions for the detailing pass
 ```
 
-— one bullet per decision that must close before any of it is implementable. `wf-plan`
-reads it as the work list for a detailing pass, and `wf-conduct` refuses to launch against a
+— one bullet per decision that must close before any of it is implementable. `plan`
+reads it as the work list for a detailing pass, and `conduct` refuses to launch against a
 plan that still has one.
 
 **One sanctioned exception while a plan is mid-review.** A detailing pass builds the
@@ -288,7 +289,7 @@ earlier conclusions its prompt whitelist withholds.
   saying so.
 - **What belongs**: a round's verdict, the commit it read, what it found, what was folded and
   what dropped as unconfirmed, a cap and how it was routed, an override and its reasoning, a
-  `wf-fold-checker` verdict that sent a fold back, the output of a command run instead of a
+  `fold-checker` verdict that sent a fold back, the output of a command run instead of a
   validator. **What doesn't**: an owner *decision* — a ruling that settles what gets built
   lives in the preamble, preserved verbatim and read as specification; this section records
   that the gate happened, with a pointer.
@@ -303,7 +304,7 @@ expected value in it ("set the currency to EUR, enter 12.50 → the request body
 
 **A node whose invariant the suite can't verify owes an entry.** Layout is the standing
 example: a DOM test environment without layout returns zero-sized rects, so a geometry
-assertion passes against any markup. `wf-conduct` walks these once, after the plan's last PR
+assertion passes against any markup. `conduct` walks these once, after the plan's last PR
 merges — the first moment the app can do what the plan describes.
 
 **Omit the heading rather than leaving it empty**; an absent section means "nothing to walk".
@@ -313,9 +314,11 @@ This section says what verification **must do** and is written before the work; 
 ## The Externals verified appendix
 
 Optional, earned the moment a plan carries external claims. One row per source: the claim,
-the URL, the date it last reproduced, and the tool that worked — some hosts refuse `WebFetch`
-and serve `curl`, and a round that doesn't know that reports the source unverified.
-`wf-plan-reviewer` takes a dated row under about a week old as read instead of re-fetching.
+the URL, the date it last reproduced, and the tool that worked. Some hosts refuse `WebFetch`
+and serve `curl`; the planner may use either, but the review agents are read-only and have
+`WebFetch` alone, so a row saying a source needed `curl` is what tells a round to take it as
+read rather than report it unreachable. `plan-reviewer` takes a dated row under about a week
+old as read instead of re-fetching.
 Write it during research while the fetches are fresh; update a row's date when a later round
 re-verifies it.
 
@@ -340,7 +343,7 @@ be a shell alias. Rows go stale on purpose: update them when a round re-derives.
 
 **A plan never counts its own contents.** "Five rules", "the six owner decisions", "three
 phases": each goes stale the moment a fold adds one, and adds nothing the noun didn't say —
-write *the rules below*, *the owner decisions*. `wf-plan-lint.sh`'s `self-count` check fails a
+write *the rules below*, *the owner decisions*. `ontherun-plan-lint.sh`'s `self-count` check fails a
 plan on the pattern outside `## Review history`. Exempt: the Status roster ("of its N nodes, P
 are PRs"), which the lint verifies against the block; a numbered item and its continuation
 lines (an owner decision is preserved verbatim and may count what it ruled on); `delivered:`
@@ -359,7 +362,7 @@ introduces fresh wrong numbers. So write `restoreSession()`, `the "Retention" se
 give a range only where it helps find something long — saying once, in the plan, that ranges
 are hints. **Where a citation and a name disagree, the name wins.**
 
-`~/.claude/wf/bin/wf-plan-cite-check.sh <plan>` sweeps every citation against
+`bin/ontherun-plan-cite-check.sh <plan>` under the plugin root sweeps every citation against
 `origin/<default>` — the file, the symbol or quoted sentence beside it, how far the range
 drifted — and can't see a claim that cites no file.
 
