@@ -21,9 +21,10 @@ List each directory case-insensitively rather than guessing a spelling:
 
 ```bash
 ls -a <dir> | grep -i -E '^(agents|claude|contributing|decisions|readme)\.md$'
-find <repo> -maxdepth 3 -not -path '*/node_modules/*' \
-  \( -iname 'decisions*' -o -iname 'adr' -o -iname 'contributing.md' \) 2>/dev/null
 ```
+
+and find the nested ones with `Glob` — `**/decisions*`, `**/adr`, `**/contributing.md`
+under the repo, skipping `node_modules`.
 
 An `AGENTS.md` or `CLAUDE.md` in a subdirectory governs the files beneath it, so check the
 directories of the files a change touches as well.

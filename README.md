@@ -56,16 +56,19 @@ share; nothing restates them.
 
 **Hook** in `hooks/` — `readonly-guard.sh` runs before every Bash call and, when the
 caller is one of the five review agents (`reviewer`, `validator`, `plan-reviewer`,
-`plan-validator`, `fold-checker`), allows only read-only forms of `git`, `gh`, `find` and a
-list of plain filters, denying anything else with the reason — including the environment
+`plan-validator`, `fold-checker`), holds the command to a small grammar — plain words,
+quoted strings, pipes and `&&`, redirection only to `/dev/null`, nothing bash would expand
+or substitute — and allows only read-only forms of `git`, `gh`, `sort`, `uniq` and a list
+of plain filters, denying anything else with the reason — including the environment
 variables and `git -c` keys a call may set, since a pager or an external diff is a program
 too. Every check is an allowlist, down to the option: where a program has any option that
 writes, changes a ref or runs something, each option it is given must appear on that
 program's list by its full spelling, so an unknown option, or an abbreviation of a known
-one, is denied rather than reasoned about. `sed`, `awk` and `curl` are denied outright:
-each hides write or exec modes in its program text, and the agents have `Read`, `Grep` and
-`WebFetch` for what those did. Its header lists the allowlist; `readonly-guard.test.sh`
-pins it.
+one, is denied rather than reasoned about. The git subcommands whose reading and writing
+forms differ by an operand (`branch`, `tag`, `config`, `remote`) are out, as are `sed`,
+`awk`, `curl`, `find` and `rg`: the agents have `Read`, `Grep`, `Glob` and `WebFetch` for
+what those did. Its header lists the grammar and the allowlist; `readonly-guard.test.sh`
+pins them.
 
 **Scripts** in `bin/` — deterministic checks the skills run instead of spending a reviewer
 round on them. Each has a header with usage and exit codes, and a `.test.sh` beside it. The

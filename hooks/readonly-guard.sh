@@ -12,17 +12,22 @@
 # input it can't parse, it exits 0 with no output: no decision, the normal permission flow
 # applies.
 #
-# For those agents the command is split into simple commands on newlines, `;`, `|`, `&`,
-# `&&` and `||`, and every one has to pass. Quoted strings are masked, length for length,
-# before the split, so a `|` inside a grep pattern is not a pipe -- and the words of each
-# command are then taken from the unmasked text. A redirection to anywhere but /dev/null, a
-# `$(...)` or backtick substitution, a process substitution, any other `$` outside single
-# quotes that is not a trailing regex anchor, a brace expansion, an unquoted glob, a
-# parenthesis other than a subshell around a whole command (`((...))` included), or text the
-# tokenizer can't account for is denied outright -- the checks
-# read words as written, and bash must not get to rewrite them or define functions behind
-# them. A failing command denies the whole call -- a `permissionDecision` of `deny` on
-# stdout, with the reason -- and nothing runs.
+# For those agents the command has to fit a small grammar, and every simple command in it
+# has to pass. The grammar is what the checks can read without bash rewriting any of it:
+#
+#   - words made of letters, digits and `_ . / : @ = , + % ^ ~ -`, single-quoted strings,
+#     and double-quoted strings that contain no `$` and no backtick (a backslash inside them
+#     escapes the next character, as in bash);
+#   - the separators `|`, `||`, `&&`, `;`, `&` and newline, which split it into simple
+#     commands;
+#   - the redirections `>/dev/null`, `2>/dev/null`, `&>/dev/null` and `2>&1`, and no other.
+#
+# Any other character outside quotes is denied with a reason: a `$` or backtick would
+# expand or substitute, `<` and `>` redirect, `(` `)` `{` `}` group or define a function,
+# `*` `?` `[` expand against the working directory, `#` opens a comment and `\` escapes --
+# each a way for bash to run something other than the words the checks read. Quoting the
+# character is the way through. A failing command denies the whole call -- a
+# `permissionDecision` of `deny` on stdout, with the reason -- and nothing runs.
 #
 # Every check is an allowlist, and options match exactly. A program is allowed by name, and
 # where any option of its could write a file, change a ref or run a program, each option word
@@ -34,47 +39,30 @@
 # the next word, which is then not an operand. git additionally takes any `--no-<option>`,
 # which only ever switches something off.
 #
-# A `#` comment and a here-document are denied too: bash reads a quote inside either as
-# text, the mask would read it as the start of a string, and the two would disagree about
-# where the next command begins. A here-string (`<<<`) is one word and is allowed.
-#
 #   NAME=value  before a command: only pager, locale and terminal variables; a pager's value
 #               must be cat, less, more, true or false
-#   git    diff log show rev-parse blame grep ls-files ls-tree ls-remote cat-file merge-base
-#          rev-list status describe shortlog name-rev for-each-ref show-ref count-objects
-#          check-ignore fetch symbolic-ref, `worktree list`, `remote` on its own or with -v,
-#          show or get-url, and the listing forms of branch, tag and config -- each with the
-#          options `check_git` lists for it. `fetch` also refuses any refspec with a
-#          destination or a `+`; `branch` and `tag` take an operand only with a listing
-#          option; `symbolic-ref` takes at most one ref; `config` needs a --get*, --list or
-#          -l option, or the `get` or `list` subcommand. Before the subcommand: -C, -c with
-#          pager, color, abbreviation and locale keys (pager values as above), --namespace,
-#          --no-pager, -P, -p, --literal-pathspecs, --no-optional-locks,
-#          --no-replace-objects. Never --git-dir, --work-tree or --bare, and only where
-#          git's own discovery from the directory it starts in -- the shell's, moved by -C
-#          -- would reach a checkout's `.git` before a bare repository: a repository under
-#          review can commit a bare one, with a `config` whose diff.external or
-#          core.fsmonitor is a program
-#   cd     only as the whole command, to one named directory that exists and is not in a
-#          bare repository, for the same reason; a command after a `cd` in the same call
-#          would be checked from a directory the shell may not be in. Never `cd -` or
-#          `cd ~user`. A relative path to a directory that does not exist is denied, for
-#          `cd` and `-C` alike, since the hook's `cwd` is the only anchor the guard has for
-#          where the shell is
+#   git    diff log show rev-list shortlog blame grep status rev-parse ls-files ls-tree
+#          cat-file merge-base describe name-rev for-each-ref show-ref count-objects
+#          check-ignore -- the subcommands whose every invocation reads -- each with the
+#          options `check_git` lists for it. Not branch, tag, config, remote, symbolic-ref,
+#          worktree, fetch or ls-remote, whose writing and reading forms differ by an operand
+#          or an option; for-each-ref, rev-parse and show-ref list what those listed. Before
+#          the subcommand: -C, -c with pager, color, abbreviation and locale keys (pager
+#          values as above), --namespace, --no-pager, -P, -p, --literal-pathspecs,
+#          --no-optional-locks, --no-replace-objects. Not --git-dir, --work-tree or --bare,
+#          and not a -C into a bare repository: a repository under review can commit one
+#          whose config names a program to run
 #   gh     pr list|view|checks|diff|status; issue list|view; repo view; run list|view;
 #          release list|view; auth status; api with no method other than GET and no body.
 #          Never -w / --web, which opens a browser
-#   find   with its tests and the actions that only print: never -delete, -exec, -execdir,
-#          -ok, -okdir, -fls, -fprint, -fprint0 or -fprintf
 #   sort   never -o, --output, --compress-program, -T or --temporary-directory
-#   uniq   with at most one operand;  rg  never --pre, --pre-glob or --hostname-bin
-#   date   in its printing forms, never -s or --set
+#   uniq   with at most one operand
 #   never  sed, awk, curl, wget or file: each hides write or exec modes in its program,
-#          format or options, and the agents have Read, Grep and WebFetch for what those did
-#   printf never -v, which assigns a variable: `printf -v PATH` would redirect every command
-#          after it to a program of the repository's
+#          format or options, and the agents have Read, Grep and WebFetch for what those did.
+#          Nor find, rg, date, printf or cd: Glob and Grep do the first two, and the rest
+#          carried a write or a move each
 #   and    ls cat head tail wc grep egrep fgrep tr cut jq diff comm column nl echo
-#          true false test [ basename dirname realpath readlink pwd which type stat du,
+#          true false test basename dirname realpath readlink pwd which type stat du,
 #          with any options: none of theirs writes a file or runs a program
 #   and every command named bare or under /usr/bin, /bin, /usr/local/bin or
 #          /opt/homebrew/bin: `./tools/git` or `node_modules/.bin/cat` is denied, since a
@@ -113,92 +101,61 @@ deny() { # reason
   exit 0
 }
 
-# Anything the guard can't look inside. Checked on the raw text: a substitution inside
-# double quotes still runs.
-# shellcheck disable=SC2016
-case $cmd in
-  *'$('*|*'`'*) deny "command substitution is not allowed; run the inner command on its own" ;;
-  *'<('*|*'>('*) deny "process substitution is not allowed" ;;
-esac
-
-# Mask quoted strings length for length, drop the redirections that are allowed, refuse any
-# other `>`, any expansion, any brace group and any unquoted glob, then split into simple
-# commands and tokenize each from the raw text. One line per command, words separated by
-# \x1f; the first line is OK, REDIRECT, EXPANSION, BRACE or GLOB; a line that is a lone \x1e
-# marks text the tokenizer could not account for, and a lone \x1d a parenthesis that is not a
-# subshell wrapper.
+# Read the command against the grammar above and split it into simple commands. Prints one
+# status line -- OK, or QUOTE for an unbalanced quote, EXPANSION for a `$` or backtick inside
+# double quotes, CHAR <c> for the first character outside the grammar -- then, after OK, one
+# line per simple command with its words, unquoted, separated by \x1f.
 read_commands() {
   GUARD_CMD=$cmd perl -e '
     my $raw = $ENV{GUARD_CMD};
-    my $m = $raw;
-    # A backslash escape outside quotes is consumed first, so `\x27` is a literal quote and
-    # `\<newline>` a continuation, not the start of a string or a separator. A `#` that
-    # starts a word outside quotes opens a comment, inside which bash reads no quote; the
-    # walk consumes it to the end of the line so that it opens none here either, and the
-    # command is denied, since the tokenizer below reads the raw text.
-    my $comment = 0;
-    $m =~ s/(\\.|"(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27|(?:^|(?<=[\s;|&()]))#[^\n]*)/ substr($1,0,1) eq "#" ? do { $comment = 1; " " x length($1) } : length($1) == 2 && substr($1,0,1) eq "\\" ? "QQ" : substr($1,0,1) . ("Q" x (length($1)-2)) . substr($1,0,1) /gse;
-    if ($comment) { print "COMMENT\n"; exit 0 }
-    # The body of a here-document is text to bash and commands to the split below, and a
-    # quote in it would be read as a string here; `<<<` is a here-string, one word.
-    if ($m =~ /(?<!<)<<(?!<)/) { print "HEREDOC\n"; exit 0 }
-    $m =~ s/([0-9]*&?>>?[ \t]*\/dev\/null|[0-9]*>&[0-9]+)/ " " x length($1) /ge;
-    if ($m =~ />/) { print "REDIRECT\n"; exit 0 }
-    # Anything bash would expand into a word the checks never saw: a `$` outside single
-    # quotes (a variable, `${...}`, `$\x27...\x27`), or a brace group outside quotes.
-    # Same three-way walk as the mask above, so a quote of one kind inside the other is
-    # text, not a delimiter; a double-quoted string keeps its content, since `$` expands
-    # there, with only its backslash escapes masked.
-    my $sq = $raw;
-    $sq =~ s/(\\.|"(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27)/ my $t = $1; substr($t,0,1) eq q(") ? do { (my $u = $t) =~ s{\\.}{QQ}gs; $u } : ("Q" x length($t)) /gse;
-    # A `$` is literal only as a regex anchor: at the end, or before whitespace, `"`, `|`,
-    # `)`, `;` or `&`. Before anything else it is taken to expand -- a name, digit, brace,
-    # paren, `[` (the old arithmetic form) or special character -- and, outside any quotes,
-    # it opens `$\x27...\x27` or `$"..."`.
-    if ($m =~ /\$(?=[\x27"])/) { print "EXPANSION\n"; exit 0 }
-    if ($sq =~ /\$(?![\s"|);&]|$)/) { print "EXPANSION\n"; exit 0 }
-    if ($m =~ /\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}/) { print "BRACE\n"; exit 0 }
-    # An unquoted glob is expanded against the working directory, where a repository under
-    # review can plant a file named `-exec`; `[` and `]` on their own are the test command.
-    for my $w (split /\s+/, $m) {
-      next if $w eq "[" || $w eq "]";
-      if ($w =~ /[*?\[]/) { print "GLOB\n"; exit 0 }
+    my $len = length $raw;
+    # Mask the quoted strings length for length, so that every position of the mask is the
+    # same position of the raw text: a quote inside the other kind of quote is text, and
+    # the only `$` or backtick a double-quoted string may hold is an escaped one.
+    my $m = "";
+    for (my $i = 0; $i < $len; ) {
+      my $c = substr($raw, $i, 1);
+      if ($c eq "\x27") {
+        my $j = index($raw, "\x27", $i + 1);
+        if ($j < 0) { print "QUOTE\n"; exit 0 }
+        $m .= "\x27" . ("Q" x ($j - $i - 1)) . "\x27"; $i = $j + 1; next;
+      }
+      if ($c eq q(")) {
+        my $j = $i + 1;
+        while ($j < $len) {
+          my $d = substr($raw, $j, 1);
+          if ($d eq "\\") { $j += 2; next }
+          last if $d eq q(");
+          if ($d eq "\$" || $d eq "`") { print "EXPANSION\n"; exit 0 }
+          $j++;
+        }
+        if ($j >= $len) { print "QUOTE\n"; exit 0 }
+        $m .= q(") . ("Q" x ($j - $i - 1)) . q("); $i = $j + 1; next;
+      }
+      $m .= $c; $i++;
     }
+    # The allowed redirections are whole words; blank them, then every `<`, `>` and `&`
+    # left is outside the grammar, except the `&` of a separator.
+    $m =~ s/(?<![^\s])([0-9]?&?>>?\s*\/dev\/null|2>&1)(?![^\s;|&])/ " " x length($1) /ge;
+    (my $t = $m) =~ s/\|\||&&|[|;&\n]/ /g;
+    if ($t =~ /([^A-Za-z0-9 \t_.\/:@=,+%^~\x27"Q-])/) { print "CHAR $1\n"; exit 0 }
     print "OK\n";
-    my ($start, $len) = (0, length $m);
-    for (my $i = 0; $i <= $len; $i++) {
-      my $c = $i < $len ? substr($m, $i, 1) : "\n";
-      next unless $c =~ /[\n;|&]/;
-      my $seg = substr($raw, $start, $i - $start);
-      my $mseg = substr($m, $start, $i - $start);
-      $start = $i + 1;
-      next unless $seg =~ /\S/;
-      # `((` opens an arithmetic command, which assigns: `((COLUMNS=PATH=0))` sets PATH.
-      if ($mseg =~ /^\s*\(\(/) { print "\x1d\n"; next }
-      # A subshell is its command. The parens to strip are the ones the masked text shows
-      # bare -- an escaped `\)` is QQ there -- and masking is length-preserving, so the same
-      # positions come off the raw text.
-      if ($mseg =~ /^(\s*\(+)/)  { my $n = length $1; substr($seg, 0, $n) = ""; substr($mseg, 0, $n) = "" }
-      if ($mseg =~ /(\)+\s*)$/)  { my $n = length $1; substr($seg, -$n) = "";  substr($mseg, -$n) = "" }
-      # Any other parenthesis is a function definition, a case pattern or arithmetic --
-      # grammar the checks do not read.
-      if ($mseg =~ /[()]/) { print "\x1d\n"; next }
-      $seg =~ s/\\\n//g;                           # a continued line is one line
+    # Split on the separators; each piece of the mask is the same piece of the raw text, and
+    # its words sit where the mask shows non-blank runs.
+    my $start = 0;
+    while ($m =~ /\|\||&&|[|;&\n]|\z/g) {
+      my $end = $-[0];
+      my $mseg = substr($m, $start, $end - $start);
+      my $seg = substr($raw, $start, $end - $start);
+      $start = $+[0];
       my @w;
-      my $after_redirect = 0;
-      pos($seg) = 0;
-      while ($seg =~ /\G\s*((?:[^\s"\x27\\]|\\.|"(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27)+)/gc) {
-        my $w = $1;
-        # A redirection is an operator only when written bare; a quoted ">" is an argument.
-        if ($w =~ /^[0-9]*(?:<<?<?|&?>>?)(?:\/dev\/null|&[0-9]+)?$/) { $after_redirect = ($w !~ /\/dev\/null|&[0-9]+$/); next }
-        if ($after_redirect) { $after_redirect = 0; next }   # the file a bare `2>` or `<` names
-        $w =~ s/"((?:[^"\\]|\\.)*)"|\x27([^\x27]*)\x27|\\(.)/defined $1 ? $1 : defined $2 ? $2 : $3/gse;
-        $w =~ s/\n/ /g;
+      while ($mseg =~ /\S+/g) {
+        my $w = substr($seg, $-[0], $+[0] - $-[0]);
+        $w =~ s/\x27([^\x27]*)\x27|"((?:[^"\\]|\\.)*)"/ defined $1 ? $1 : do { (my $u = $2) =~ s{\\([\\"\$`\n])}{$1}gs; $u } /gse;
         push @w, $w;
       }
-      my $rest = substr($seg, pos($seg) // 0);
-      if ($rest =~ /\S/) { print "\x1e\n"; next }
       print join("\x1f", @w), "\n" if @w;
+      last if $end >= $len;
     }'
 }
 
@@ -208,12 +165,11 @@ read_commands() {
 # The lists are strings: FLAGS and VALUES hold short-option letters, without and with a
 # value; OPTIONAL holds letters whose value is only ever attached (`-M90%`); LONGS and
 # LONGVALS hold long-option names without their dashes, without and with a separate value.
-# A listed long option takes `=value` either way. DIGITS allows `-<number>` (`git log -3`),
-# NEGATE allows any `--no-<name>`, which only ever switches something off, and NUMERIC
-# allows a bare `-<number>...` word as a value (`find -mtime -1`); each is `yes` or `no`.
-# `--` ends the options. Anything else that starts with a dash is denied: an unlisted
+# A listed long option takes `=value` either way. DIGITS allows `-<number>` (`git log -3`)
+# and NEGATE any `--no-<name>`, which only ever switches something off; each is `yes` or
+# `no`. `--` ends the options. Anything else that starts with a dash is denied: an unlisted
 # option, any abbreviation of a listed one, a separate value that starts with a dash.
-FLAGS="" VALUES="" OPTIONAL="" LONGS="" LONGVALS="" DIGITS=no NEGATE=no NUMERIC=no
+FLAGS="" VALUES="" OPTIONAL="" LONGS="" LONGVALS="" DIGITS=no NEGATE=no
 OPERANDS=()
 SEEN=""
 lists() { # flags values optional longs longvals [digits]
@@ -255,7 +211,6 @@ walk_opts() { # label words...
         case $run in
           [0-9]*)
             if [ "$DIGITS" = yes ] && [ -z "${run//[0-9]/}" ]; then SEEN="$SEEN -$run"; continue; fi
-            if [ "$NUMERIC" = yes ]; then OPERANDS+=("$w"); continue; fi
             deny "\`$label $w\` is not on the read-only allowlist of options" ;;
         esac
         while [ -n "$run" ]; do
@@ -270,10 +225,6 @@ walk_opts() { # label words...
   done
   [ -z "$need_value" ] || deny "\`$label\` ends with an option that needs a value"
   return 0
-}
-
-seen() { # option -> 0 when walk_opts saw it
-  case " $SEEN " in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
 
 pager_value_ok() { # value -> 0 when it is a pager git or gh may run
@@ -338,24 +289,15 @@ LOG_LONGVALS='max-count skip since after until before author committer grep grep
   min-parents max-parents glob exclude format encoding date
   decorate-refs decorate-refs-exclude filter missing max-age min-age default'
 
-# The shell's directory is the hook input's `cwd`, and git's is that moved by each -C. A
-# `cd` is allowed only as the whole command, so that nothing in the same call runs after it:
-# whether a `cd` takes effect depends on grammar the guard does not read (a subshell, a
-# pipeline, `&`, a failed `&&`), and a command after one would be checked from a directory
-# the shell may not be in. A relative path to a directory that does not exist is denied
-# rather than left to fail, because the hook's `cwd` is the guard's only anchor for the
-# shell's directory, and a path that resolves nowhere from it may resolve somewhere from
-# where the shell really is. An absolute one that does not exist is left to the shell or
-# git to fail on.
+# Where git runs is the hook input's `cwd` moved by each -C. A diff cannot commit a `.git`
+# entry, but it can commit a bare repository -- `HEAD` beside `objects/` -- whose config names
+# a program to run, and git's discovery walks up from its directory until it meets one.
 resolve_dir() { # dir base -> the canonical directory on stdout; 1 if it is not a directory
   local d=$1
   case $d in /*) ;; *) d=$2/$d ;; esac
   (cd -P -- "$d" 2>/dev/null && pwd -P)
 }
 reaches_bare_repo() { # canonical dir -> 0 if git's discovery from it meets a bare repository first
-  # Walk up as git does: a `.git` ends the search; `HEAD` beside `objects/` is a bare
-  # repository. A diff cannot commit a `.git` entry, but it can commit a bare repository
-  # whose config names a program to run.
   local d=$1
   while :; do
     [ -e "$d/.git" ] && return 1
@@ -363,33 +305,6 @@ reaches_bare_repo() { # canonical dir -> 0 if git's discovery from it meets a ba
     [ "$d" = / ] && return 1
     d=${d%/*}; [ -n "$d" ] || d=/
   done
-}
-check_cd() { # words after `cd`
-  local -a w=("$@")
-  local i=0 target new
-  [ "$NSEG" -eq 1 ] || deny "\`cd\` only as the whole command; for the rest, use \`git -C\` or a path"
-  while [ $i -lt ${#w[@]} ]; do
-    case ${w[$i]} in
-      --) i=$((i + 1)); break ;;
-      -[LPe@]*) i=$((i + 1)) ;;
-      *) break ;;
-    esac
-  done
-  [ $((${#w[@]} - i)) -le 1 ] || deny "\`cd\` takes one directory"
-  target=${w[$i]:-}
-  # shellcheck disable=SC2088  # the tildes are patterns, not paths to expand
-  case $target in
-    '') target=$HOME ;;
-    -) deny "\`cd -\` goes to a directory the guard cannot know; name it" ;;
-    '~') target=$HOME ;;
-    '~/'*) target=$HOME${target#\~} ;;
-    '~'*) deny "\`cd ~user\` goes to a directory the guard cannot know; name it" ;;
-  esac
-  if new=$(resolve_dir "$target" "$hook_cwd"); then
-    ! reaches_bare_repo "$new" || deny "\`cd $target\` enters a bare repository, whose config git would obey; stay in a checkout"
-  else
-    case $target in /*) ;; *) deny "\`cd $target\`: no such directory under $hook_cwd; name it from the root" ;; esac
-  fi
 }
 
 check_git() { # words after `git`
@@ -400,12 +315,11 @@ check_git() { # words after `git`
       -c) check_git_config "${w[$((i + 1))]:-}"; i=$((i + 2)); continue ;;
       -c?*) check_git_config "${w[$i]#-c}"; i=$((i + 1)); continue ;;
       -C)
-        # Each -C moves git, a relative one from where the previous left it.
+        # Each -C moves git, a relative one from where the previous left it. One that does
+        # not resolve is git's own error, before it reads any config.
         v=${w[$((i + 1))]:-}
         if [ -n "$v" ]; then                      # git ignores an empty -C
-          if new=$(resolve_dir "$v" "$dir"); then dir=$new
-          else case $v in /*) walk=no ;; *) deny "\`git -C $v\`: no such directory under $dir; name it from the root" ;; esac
-          fi
+          if new=$(resolve_dir "$v" "$dir"); then dir=$new; else walk=no; fi
         fi
         i=$((i + 2)); continue ;;
       --namespace) i=$((i + 2)); continue ;;
@@ -415,8 +329,6 @@ check_git() { # words after `git`
       *) sub=${w[$i]}; i=$((i + 1)); break ;;
     esac
   done
-  # Where git starts, -C or not; a -C to an absolute directory that does not exist is git's
-  # own error, before it reads any config.
   if [ $walk = yes ] && reaches_bare_repo "$dir"; then
     deny "git would run in a bare repository ($dir), whose config can run a program; use -C on a checkout"
   fi
@@ -441,8 +353,6 @@ check_git() { # words after `git`
       lists 'cdoisztvfmku' 'xX' '' 'cached deleted others ignored stage directory no-empty-directory unmerged killed modified exclude-standard error-unmatch full-name recurse-submodules abbrev debug deduplicate eol sparse' 'exclude exclude-from exclude-per-directory with-tree format' ;;
     ls-tree)
       lists 'drtlz' '' '' 'long name-only name-status object-only full-name full-tree abbrev' 'format' ;;
-    ls-remote)
-      lists 'htq' '' '' 'heads tags refs quiet exit-code get-url symref branches' 'sort' ;;
     cat-file)
       lists 'tsepz' '' '' 'textconv filters batch batch-check batch-command batch-all-objects buffer follow-symlinks unordered allow-unknown-type' 'path' ;;
     merge-base)
@@ -454,67 +364,21 @@ check_git() { # words after `git`
     for-each-ref)
       lists '' '' '' 'shell perl python tcl color ignore-case omit-empty include-root-refs stdin' 'count sort format points-at merged no-merged contains no-contains exclude' ;;
     show-ref)
-      lists 'dsq' '' '' 'head branches tags dereference hash verify exists abbrev quiet exclude-existing' '' ;;
+      lists 'dsq' '' '' 'head heads branches tags dereference hash verify exists abbrev quiet exclude-existing' '' ;;
     count-objects)
       lists 'vH' '' '' 'verbose human-readable' '' ;;
     check-ignore)
       lists 'qvzn' '' '' 'quiet verbose stdin non-matching no-index' '' ;;
-    fetch)
-      # A fetch updates remote-tracking refs, which is fine. Not a forcing, pruning or upstream
-      # option, not --stdin, --upload-pack or anything that runs maintenance; not --depth,
-      # --deepen or --shallow-*, which turn the human's full clone into a shallow one, nor
-      # --filter, which turns it into a partial one; and no refspec with a destination or a
-      # `+`, which writes or deletes the checkout's own branches.
-      lists 'qvtnk46' 'j' '' 'quiet verbose all tags dry-run no-tags recurse-submodules no-recurse-submodules progress no-progress atomic porcelain ipv4 ipv6 keep multiple prefetch' 'jobs negotiation-tip' ;;
-    symbolic-ref)
-      lists 'q' '' '' 'quiet short recurse no-recurse' '' ;;
-    worktree)
-      [ "${rest[0]:-}" = list ] || deny "\`git worktree ${rest[0]:-}\` changes worktrees; only \`list\` is allowed"
-      rest=("${rest[@]:1}")
-      lists 'vz' '' '' 'porcelain verbose' 'expire' ;;
-    remote)
-      case ${rest[0]:-} in
-        ''|-v|--verbose) [ ${#rest[@]} -le 1 ] || deny "\`git remote\` lists remotes only on its own or with -v"; return 0 ;;
-        show) rest=("${rest[@]:1}"); lists 'n' '' '' '' '' ;;
-        get-url) rest=("${rest[@]:1}"); lists '' '' '' 'push all' '' ;;
-        *) deny "\`git remote ${rest[0]}\` changes remotes" ;;
-      esac ;;
-    branch)
-      lists 'arvliq' '' '' 'all remotes verbose list merged no-merged contains no-contains points-at show-current sort format color no-color ignore-case column no-column abbrev no-abbrev quiet' '' ;;
-    tag)
-      lists 'li' '' 'n' 'list contains no-contains merged no-merged points-at sort format color ignore-case column no-column' '' ;;
-    config)
-      lists 'lz' 'f' '' 'get get-all get-regexp get-urlmatch get-color get-colorbool list show-origin show-scope name-only null includes no-includes global system local worktree bool int bool-or-int path expiry-date fixed-value all regexp value' 'file blob default type' ;;
+    branch|tag)
+      deny "\`git $sub\` creates as readily as it lists; list with \`for-each-ref refs/heads/\` or \`refs/tags/\`, or \`rev-parse --abbrev-ref HEAD\` for the current branch" ;;
+    config|remote)
+      deny "\`git $sub\` writes as readily as it reads; Read .git/config instead" ;;
+    fetch|ls-remote)
+      deny "\`git $sub\` talks to the remote and writes refs; the skill that spawned you fetched before the round" ;;
     '') deny "\`git\` with no subcommand" ;;
     *) deny "\`git $sub\` is not on the read-only allowlist" ;;
   esac
   walk_opts "git $sub" "${rest[@]+"${rest[@]}"}"
-  case $sub in
-    fetch)
-      local r
-      for r in "${OPERANDS[@]+"${OPERANDS[@]}"}"; do
-        case $r in *:*|+*) deny "\`git fetch\` with a refspec destination writes a local ref; fetch the remote and read origin/<branch>" ;; esac
-      done ;;
-    symbolic-ref)
-      [ ${#OPERANDS[@]} -le 1 ] || deny "\`git symbolic-ref\` with two refs writes one" ;;
-    branch)
-      # -v is verbosity, not list mode: `git branch -v new` creates `new`.
-      if [ ${#OPERANDS[@]} -gt 0 ] && ! { seen -a || seen -r || seen -l || seen --all || seen --remotes || seen --list \
-           || seen --merged || seen --no-merged || seen --contains || seen --no-contains || seen --points-at || seen --show-current; }; then
-        deny "\`git branch <name>\` creates a branch; list with -a, -r, --list, --merged, --contains or --points-at"
-      fi ;;
-    tag)
-      if [ ${#OPERANDS[@]} -gt 0 ] && ! { seen -l || seen -n || seen --list || seen --contains || seen --no-contains \
-           || seen --merged || seen --no-merged || seen --points-at; }; then
-        deny "\`git tag <name>\` creates a tag; list with -l, --list, --contains or --points-at"
-      fi ;;
-    config)
-      # A read form is required: `git config <key>` alone reads, but `git config <key> <value>`
-      # writes, and the two differ only in operand count.
-      seen --get || seen --get-all || seen --get-regexp || seen --get-urlmatch || seen --get-color || seen --get-colorbool \
-        || seen --list || seen -l || [ "${OPERANDS[0]:-}" = get ] || [ "${OPERANDS[0]:-}" = list ] \
-        || deny "\`git config\` only in a read form: --get, --get-all, --get-regexp, --list, -l, or the get and list subcommands" ;;
-  esac
   return 0
 }
 
@@ -556,25 +420,6 @@ check_gh() { # words after `gh`
   deny "\`gh $sub $act\` is not on the read-only allowlist"
 }
 
-# find's tests and the actions that only print. Not -delete, -exec, -execdir, -ok, -okdir,
-# -fls, -fprint, -fprint0 or -fprintf. A numeric word (`-mtime -1`) is a value.
-FIND_WORDS='-name -iname -path -ipath -wholename -iwholename -regex -iregex -lname -ilname -type
-  -xtype -maxdepth -mindepth -depth -mtime -mmin -atime -amin -ctime -cmin -newer -anewer -cnewer
-  -newermt -newerct -newerat -newermm -newerBm -newerBt -size -empty -not -o -or -a -and -prune
-  -print -print0 -printf -ls -true -false -perm -user -group -uid -gid -nouser -nogroup -links
-  -inum -samefile -readable -writable -executable -xdev -mount -follow -L -H -P -E -s -x -d -f
-  -quit -regextype -daystart -noleaf -ignore_readdir_race -noignore_readdir_race -fstype -used
-  -flags -acl -Bmin -Btime -Bnewer -mnewer'
-check_find() { # words after `find`
-  local w
-  for w in "$@"; do
-    case $w in
-      -[0-9]*|+[0-9]*) ;;
-      -*) case " ${FIND_WORDS//$'\n'/ } " in *" $w "*) ;; *) deny "\`find $w\` is not on the read-only allowlist of find tests and actions" ;; esac ;;
-    esac
-  done
-}
-
 check_segment() { # the words of one simple command, unquoted
   local -a words=("$@")
   # Leading NAME=value assignments and the harmless wrappers.
@@ -595,13 +440,16 @@ check_segment() { # the words of one simple command, unquoted
     */*) deny "\`$prog\` names a program by path; use the bare name, or a path under /usr/bin, /bin, /usr/local/bin or /opt/homebrew/bin" ;;
   esac
   local -a rest=("${words[@]:1}")
-  NEGATE=no NUMERIC=no
+  NEGATE=no
   case $prog in
     git) check_git "${rest[@]+"${rest[@]}"}" ;;
     gh) check_gh "${rest[@]+"${rest[@]}"}" ;;
     sed|awk|gawk|mawk|nawk|curl|wget|file)
       deny "\`$prog\` is not allowed for a read-only agent; read files with the Read and Grep tools and pages with WebFetch" ;;
-    find) check_find "${rest[@]+"${rest[@]}"}" ;;
+    find|rg)
+      deny "\`$prog\` is not allowed for a read-only agent; use the Glob and Grep tools" ;;
+    cd)
+      deny "\`cd\` is not allowed for a read-only agent; use \`git -C <dir>\` or a path" ;;
     sort)
       # Not -o / --output, --compress-program, or -T / --temporary-directory.
       lists 'bdfghiMnrRsuVzcCm' 'ktS' '' 'ignore-leading-blanks dictionary-order ignore-case general-numeric-sort human-numeric-sort ignore-nonprinting month-sort numeric-sort random-sort reverse version-sort stable unique zero-terminated check merge debug help version' 'key field-separator buffer-size batch-size parallel files0-from'
@@ -610,57 +458,35 @@ check_segment() { # the words of one simple command, unquoted
       lists 'cdDiuz' 'fsw' '' 'count repeated all-repeated ignore-case unique zero-terminated group help version' 'skip-fields skip-chars check-chars'
       walk_opts uniq "${rest[@]+"${rest[@]}"}"
       [ ${#OPERANDS[@]} -le 1 ] || deny "\`uniq\` with two operands writes the second" ;;
-    rg)
-      # Not --pre, --pre-glob or --hostname-bin, which run a program.
-      lists 'nNiSsvwxlcHhoqFPUzaLu0' 'efgtTmMrdABCjE' '' 'line-number no-line-number ignore-case smart-case case-sensitive invert-match word-regexp line-regexp files-with-matches files-without-match count count-matches no-filename with-filename only-matching quiet fixed-strings pcre2 multiline multiline-dotall search-zip text follow type-list max-count-only no-max-count include-zero color heading no-heading json vimgrep column no-column byte-offset null null-data files hidden no-ignore no-ignore-vcs no-ignore-global no-ignore-parent no-ignore-dot no-ignore-files no-messages no-config debug trace stats trim passthru one-file-system line-buffered block-buffered unrestricted crlf mmap no-mmap no-unicode no-require-git no-search-zip sort-files auto-hybrid-regex no-pcre2-unicode no-context-separator version help' 'glob iglob type type-not type-add max-count max-columns max-depth max-filesize after-context before-context context context-separator colors encoding engine regexp file replace sort sortr threads ignore-file dfa-size-limit regex-size-limit field-context-separator field-match-separator path-separator'
-      walk_opts rg "${rest[@]+"${rest[@]}"}" ;;
-    date)
-      # Printing forms only: not -s / --set.
-      lists 'uRj' 'dvrf' 'I' 'utc universal iso-8601 rfc-3339 rfc-email debug help version' 'date reference file'
-      walk_opts date "${rest[@]+"${rest[@]}"}" ;;
-    printf)
-      # Not -v, which assigns a shell variable: `printf -v PATH` redirects every later command.
-      local a
-      for a in "${rest[@]+"${rest[@]}"}"; do
-        case $a in
-          --) break ;;
-          -v*) deny "\`printf -v\` assigns a variable, and the next command would run under it; print instead" ;;
-          -*) ;;
-          *) break ;;
-        esac
-      done ;;
-    cd) check_cd "${rest[@]+"${rest[@]}"}" ;;
-    ls|cat|head|tail|wc|grep|egrep|fgrep|tr|cut|jq|diff|comm|column|nl|echo|true|false|test|'['|basename|dirname|realpath|readlink|pwd|which|type|stat|du) ;;
+    ls|cat|head|tail|wc|grep|egrep|fgrep|tr|cut|jq|diff|comm|column|nl|echo|true|false|test|basename|dirname|realpath|readlink|pwd|which|type|stat|du) ;;
+    '') deny "an empty command name" ;;
     *) deny "\`$prog\` is not on the read-only allowlist" ;;
   esac
   return 0
 }
 
-# Read every line first: `cd` needs to know whether it is the whole command.
-lines=()
-while IFS= read -r line; do lines+=("$line"); done < <(read_commands)
-NSEG=$(( ${#lines[@]} > 0 ? ${#lines[@]} - 1 : 0 ))
 first=true
-for line in "${lines[@]+"${lines[@]}"}"; do
+while IFS= read -r line; do
   if $first; then
     first=false
     case $line in
       OK) ;;
-      REDIRECT) deny "redirecting output to a file is not allowed (only to /dev/null)" ;;
-      COMMENT) deny "a # comment is not allowed; drop it" ;;
-      HEREDOC) deny "a here-document is not allowed; pass the text as an argument or a here-string" ;;
-      EXPANSION) deny "a \$ outside single quotes would expand into text the guard cannot check; write the value out, or single-quote it" ;;
-      BRACE) deny "a brace expansion would expand into text the guard cannot check; write the words out" ;;
-      GLOB) deny "an unquoted *, ? or [ would be expanded against the working directory; quote the pattern" ;;
+      QUOTE) deny "a quote is not closed" ;;
+      EXPANSION) deny "a \$ or backtick inside double quotes would expand or substitute; single-quote it" ;;
+      'CHAR $'|'CHAR `') deny "a \$ or backtick outside quotes would expand or substitute; write the value out, or single-quote it" ;;
+      'CHAR <'|'CHAR >') deny "redirecting to or from a file is not allowed (only >/dev/null, 2>/dev/null, &>/dev/null and 2>&1)" ;;
+      'CHAR ('|'CHAR )'|'CHAR {'|'CHAR }') deny "a subshell, group, brace expansion or function definition is not allowed; write the commands out, joined by && or |" ;;
+      'CHAR *'|'CHAR ?'|'CHAR [') deny "an unquoted *, ? or [ would be expanded against the working directory; quote the pattern (and use test, not [)" ;;
+      'CHAR #') deny "a # comment is not allowed; drop it" ;;
+      "CHAR \\") deny "a backslash outside quotes is not allowed; quote the word instead, and keep the command on one line" ;;
+      'CHAR '*) deny "the character \`${line#CHAR }\` is not allowed outside quotes; quote it" ;;
       *) deny "the command could not be parsed" ;;
     esac
     continue
   fi
-  [ "$line" = $'\x1e' ] && deny "part of the command could not be parsed (an unbalanced quote?)"
-  [ "$line" = $'\x1d' ] && deny "parentheses other than a subshell around a whole command are not allowed (a function definition, or arithmetic?)"
   IFS=$'\x1f' read -r -a words <<< "$line"
   check_segment "${words[@]+"${words[@]}"}"   # guarded: bash 3.2 calls an empty array unbound
-done
+done < <(read_commands)
 
 # The checker always prints a status line for a non-empty command, so silence means it did
 # not run -- perl missing, or a crash -- and a read-only agent's command must not pass unread.
