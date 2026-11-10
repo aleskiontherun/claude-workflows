@@ -119,6 +119,16 @@ LEDGER="$ONTHERUN_MERGE_DESK_DIR/ledger.jsonl"
 
 fresh() { rm -rf "$STUB" "$ONTHERUN_MERGE_DESK_DIR"; mkdir -p "$STUB"; }
 
+# Wait for a command to succeed, for up to 30s: the limit is for a machine under load, and
+# is never reached on one that is not.
+await() {
+  local i=0
+  until "$@" >/dev/null 2>&1; do
+    i=$((i + 1)); [ $i -ge 150 ] && return 1
+    sleep 0.2
+  done
+}
+
 desk() { OUT=$("$DESK" "$@" 2>&1); RC=$?; }
 
 enqueues() { # the mutations so far, in order, as `id id ...`
@@ -171,6 +181,8 @@ desk submit not-a-pr;        assert_eq "submit with no repo is usage" 64 "$RC"
 desk submit acme/api#x;      assert_eq "submit with no number is usage" 64 "$RC"
 desk submit acme/api#1 --from; assert_eq "--from with no value is usage" 64 "$RC"
 desk run --forever;          assert_eq "run with an unknown flag is usage" 64 "$RC"
+ONTHERUN_MERGE_DESK_HOLD_MINUTES=soon desk status
+assert_eq "a hold limit that is not a number is refused" 1 "$RC"
 desk told;                   assert_eq "told with no seq is usage" 64 "$RC"
 desk told abc;               assert_eq "told with a word is usage" 64 "$RC"
 desk watch now;              assert_eq "watch with an argument is usage" 64 "$RC"
@@ -457,27 +469,21 @@ assert_has "run: and in the log" "broken: the ledger does not parse" \
 fresh; pr acme/api 91
 "$DESK" watch > "$TMP/watch.log" 2>&1 &
 watcher=$!
+# `watch` execs tail, so the pid is tail's once it is following -- not before.
+is_tail() { case $(ps -o command= -p "$watcher") in tail*) return 0 ;; *) return 1 ;; esac; }
+await is_tail
 "$DESK" run > "$TMP/run.log" 2>&1 &
 runner=$!
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  [ -f "$ONTHERUN_MERGE_DESK_DIR/run.lock/pid" ] && break
-  sleep 0.2
-done
+await test -s "$ONTHERUN_MERGE_DESK_DIR/run.lock/pid"
 desk run
 assert_eq  "run: a second loop is refused" 1 "$RC"
 assert_has "run: and names the first" "already running (pid $runner)" "$OUT"
 desk submit 'acme/api#91' --from "Plan A"
 assert_lacks "run: submit sees the loop" "no merge desk is running" "$OUT"
-for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-  grep -q enqueued "$TMP/run.log" && break
-  sleep 0.2
-done
+await grep -q enqueued "$TMP/run.log"
 assert_eq  "run: the loop enqueues what is reported while it runs" \
   'enqueued acme/api#91 position=1 from="Plan A"' "$(cat "$TMP/run.log")"
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  grep -q enqueued "$TMP/watch.log" && break
-  sleep 0.2
-done
+await grep -q enqueued "$TMP/watch.log"
 assert_eq  "watch: prints the loop's lines as they are logged" \
   'enqueued acme/api#91 position=1 from="Plan A"' "$(cat "$TMP/watch.log")"
 kill "$watcher"; wait "$watcher" 2>/dev/null
@@ -494,6 +500,15 @@ mkdir -p "$ONTHERUN_MERGE_DESK_DIR/pass.lock"
 echo "$dead" > "$ONTHERUN_MERGE_DESK_DIR/pass.lock/pid"
 desk run --once
 assert_eq "a lock whose holder is gone is taken over" "PR_92" "$(enqueues)"
+
+fresh; pr acme/api 93
+desk submit 'acme/api#93'
+mkdir -p "$ONTHERUN_MERGE_DESK_DIR/pass.lock"
+desk run --once
+assert_eq "a fresh lock with no pid yet is another pass starting" "" "$(enqueues)"
+touch -t 202001010000 "$ONTHERUN_MERGE_DESK_DIR/pass.lock"
+desk run --once
+assert_eq "an old lock that never got a pid is taken over" "PR_93" "$(enqueues)"
 
 # -------------------------------------------------- the only thing it does on GitHub
 assert_eq "every call of the run was a PR query or an enqueue" "" \

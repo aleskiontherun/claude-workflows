@@ -109,12 +109,16 @@ now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 # that dies loses nothing and a second reader never sees a half-written state.
 
 # A directory is the lock, because mkdir is atomic everywhere and flock is not everywhere.
-# A lock whose holder is gone is taken over.
+# A lock whose holder is gone is taken over: its pid is dead, or it never wrote one and the
+# lock is over a minute old.
 lock() { # name tries -> 0 when taken
   local l=$dir/$1.lock i=0 pid
   while ! mkdir "$l" 2>/dev/null; do
     pid=$(cat "$l/pid" 2>/dev/null) || pid=""
     if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then rm -rf "$l"; continue; fi
+    if [ -z "$pid" ] && [ -n "$(find "$l" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
+      rm -rf "$l"; continue
+    fi
     i=$((i + 1))
     [ "$i" -ge "$2" ] && return 1
     sleep 0.2
@@ -145,8 +149,17 @@ FOLD='
       else . end)
   | [.[]] | sort_by(.seq)'
 
-entries() { # -> every entry, oldest first, as one JSON array
+fold() { # -> every entry, oldest first, as one JSON array; the caller holds the lock
   if [ -s "$ledger" ]; then jq -sc "$FOLD" "$ledger"; else printf '[]\n'; fi
+}
+
+# The same, for a reader: under the lock, so a record being appended is never read in half.
+entries() {
+  local rc
+  lock ledger 100 || { printf 'merge-desk: the ledger is locked\n' >&2; return 1; }
+  fold; rc=$?
+  unlock ledger
+  return $rc
 }
 
 # ----------------------------------------------------------------------------- GitHub
@@ -389,7 +402,7 @@ cmd_submit() {
   esac
 
   lock ledger 100 || die "the ledger is locked"
-  all=$(entries) || { unlock ledger; die "the ledger does not parse: $ledger"; }
+  all=$(fold) || { unlock ledger; die "the ledger does not parse: $ledger"; }
   dup=$(jq -r --arg r "$repo" --argjson n "$number" '.[]
       | select(.repo == $r and .pr == $n and (.status == "waiting" or .status == "enqueued"))
       | [.seq, .status, .sha] | @tsv' <<<"$all" | tail -n 1)
@@ -404,7 +417,7 @@ cmd_submit() {
     jq -nc --arg at "$(now_iso)" --argjson seq "$seq" --arg sha "$sha" \
       '{at: $at, type: "sent_back", seq: $seq, reason: "superseded",
         detail: "reported again at \($sha[0:7])"}, {at: $at, type: "told", seq: $seq}' >> "$ledger"
-    all=$(entries)
+    all=$(fold)
   fi
   seq=$(jq '([.[].seq] | max // 0) + 1' <<<"$all")
   ahead=$(jq --arg r "$repo" '[.[] | select(.repo == $r and .status == "waiting")] | length' <<<"$all")
@@ -491,4 +504,7 @@ case $cmd in
   *) usage ;;
 esac
 mkdir -p "$dir" || die "cannot create $dir"
+case $hold_minutes in
+  ''|*[!0-9]*) die "ONTHERUN_MERGE_DESK_HOLD_MINUTES must be a whole number of minutes" ;;
+esac
 "cmd_$cmd" "$@"
