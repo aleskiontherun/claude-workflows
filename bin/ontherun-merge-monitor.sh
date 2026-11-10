@@ -84,35 +84,9 @@ cd -- "$repo_path" || exit 1
 R=()
 if slug=$(wf_slug .); then R=(-R "$slug"); fi
 
-# One call, bounded: a hang is a failed attempt. TERM rather than an alarm, because gh
-# is a Go binary and Go ignores SIGALRM. Output goes to a file rather than a pipe so
-# that a child surviving the kill cannot hold the caller's $(...) open.
-gh_bounded() {
-  local f pid wd rc
-  f=$(mktemp "${TMPDIR:-/tmp}/ontherun-merge-monitor.XXXXXX") || return 1
-  "$@" >"$f" 2>&1 &
-  pid=$!
-  (
-    sleep "$call_timeout" & s=$!
-    trap 'kill "$s" 2>/dev/null; exit 0' TERM
-    wait "$s"
-    : >"$f.timeout"
-    kill -TERM "$pid" 2>/dev/null
-    sleep 2 & s=$!
-    wait "$s"
-    kill -KILL "$pid" 2>/dev/null
-  ) </dev/null >/dev/null 2>&1 &
-  wd=$!
-  wait "$pid"; rc=$?
-  kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
-  if [ $rc -ne 0 ] && [ -e "$f.timeout" ]; then
-    printf 'gh: no response after %ss\n' "$call_timeout"
-  else
-    cat "$f"
-  fi
-  rm -f "$f" "$f.timeout"
-  return $rc
-}
+# One call, bounded: a hang is a failed attempt. wf_gh_bounded in ontherun-lib.sh is the
+# mechanism.
+gh_bounded() { wf_gh_bounded "$call_timeout" "$@"; }
 
 # gh's API bursts-fail on some networks while git and curl over the same link are fine.
 # Reported straight through, one flap costs two events -- the failure and the recovery.
