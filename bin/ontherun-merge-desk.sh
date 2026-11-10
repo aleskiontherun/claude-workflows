@@ -44,13 +44,19 @@
 #   sent back  it cannot be enqueued, with one of the reasons below
 # and a PR in GitHub's queue stays the desk's until it merges or GitHub takes it out,
 # which sends it back too. A PR that is sent back has left the line: reported again, it
-# joins the back. A pass that gets no answer from GitHub about a PR learns nothing, so it
-# records nothing and that repo's line holds until the next pass.
+# joins the back.
+#
+# A pass that gets no answer from GitHub about a PR -- the network, a hang, an expired
+# token, a rate limit, an error that is not about the PR -- learns nothing, so it records
+# nothing and that repo's line holds until the next pass. One such pass is not news. The
+# fourth in a row is, once; so is the pass that ends them; and `status` says how many it has
+# been for as long as they last.
 #
 # Reasons a PR is sent back: closed, head_moved, draft, conflict, checks_failed,
 # review_required, timed_out (held too long), refused (GitHub would not enqueue it; its
 # message is the detail), dequeued (someone took it out of the queue by hand), removed
-# (GitHub took it out for a reason this script has no word for; the detail carries it).
+# (GitHub took it out for a reason this script has no word for; the detail carries it),
+# not_found (GitHub says there is no such pull request any more).
 #
 # What `run` prints, one line each:
 #   enqueued <repo>#<n> position=<p> from="<name>"
@@ -58,6 +64,8 @@
 #   holding <repo>#<n> for=checks|mergeability
 #   merged <repo>#<n> tell="<name>"
 #   sent-back <repo>#<n> reason=<reason> tell="<name>"
+#   query-failed for 4 passes: <why>               said once, at the fourth in a row
+#   query-recovered after <n> passes
 #   broken: <why>                                  the loop then exits 1
 #
 # Environment:
@@ -174,31 +182,46 @@ ENQUEUE='mutation($id:ID!,$sha:GitObjectID!){enqueuePullRequest(input:{pullReque
 
 # One bounded `gh` call. Sets GH_JSON to the response and GH_ERR to why there is none.
 #   0  GitHub answered
-#   1  no answer: the network, a hang, an expired token
-#   2  GitHub answered with errors; GH_ERR is its messages
+#   1  no answer: the network, a hang, an expired token, a rate limit
+#   2  GitHub answered with errors; GH_ERR is its messages, GH_ERR_TYPE the first one's type
+# PASS_OK and PASS_ERR are the pass's tally of the two kinds.
 gh_call() {
   local out rc
-  GH_JSON=""; GH_ERR=""
+  GH_JSON=""; GH_ERR=""; GH_ERR_TYPE=""
   out=$(wf_gh_bounded "$call_timeout" gh "$@"); rc=$?
   # gh prints the response body and then, on a GraphQL error, its own one-line message.
   GH_JSON=$(printf '%s\n' "$out" | jq -c . 2>/dev/null | head -n 1)
   [ -n "$GH_JSON" ] || GH_JSON=$(printf '%s\n' "$out" | grep -m 1 '^{')
   if [ -z "$GH_JSON" ] || ! jq -e 'type == "object"' >/dev/null 2>&1 <<<"$GH_JSON"; then
-    GH_JSON=""; GH_ERR=${out%%$'\n'*}; return 1
+    GH_JSON=""; GH_ERR=${out%%$'\n'*}; PASS_ERR=$GH_ERR; return 1
   fi
   if jq -e '(.errors // []) | length > 0' >/dev/null <<<"$GH_JSON"; then
-    GH_ERR=$(jq -r '[.errors[].message] | join("; ")' <<<"$GH_JSON"); return 2
+    GH_ERR=$(jq -r '[.errors[].message] | join("; ")' <<<"$GH_JSON")
+    GH_ERR_TYPE=$(jq -r '.errors[0].type // ""' <<<"$GH_JSON")
+    # A rate limit is GitHub declining to answer, whatever shape it arrives in.
+    [ "$GH_ERR_TYPE" = RATE_LIMITED ] && { PASS_ERR=$GH_ERR; return 1; }
+    PASS_OK=1; return 2
   fi
-  [ $rc -eq 0 ] || { GH_ERR=${out%%$'\n'*}; return 1; }
+  [ $rc -eq 0 ] || { GH_ERR=${out%%$'\n'*}; PASS_ERR=$GH_ERR; return 1; }
+  PASS_OK=1
 }
 
-# Sets PR to one pull request, flattened; the status is gh_call's.
+# Sets PR to one pull request, flattened.
+#   0  PR is set
+#   1  nothing was learned about the PR: no answer, or errors that are not about it
+#   3  GitHub says there is no such pull request
+# `-F` only for the number: it turns `2048`, `true` and `null` into JSON, and a repo can be
+# named any of them.
 pr_fetch() { # owner/name number
   local rc
   PR=""
   gh_call api graphql -f query="$PR_QUERY" \
-    -F owner="${1%%/*}" -F name="${1#*/}" -F number="$2"; rc=$?
-  [ $rc -eq 0 ] || return $rc
+    -f owner="${1%%/*}" -f name="${1#*/}" -F number="$2"; rc=$?
+  if [ $rc -eq 2 ]; then
+    [ "$GH_ERR_TYPE" = NOT_FOUND ] && return 3
+    PASS_ERR=$GH_ERR; return 1
+  fi
+  [ $rc -eq 0 ] || return 1
   PR=$(jq -c '.data.repository.pullRequest | select(. != null) | {
       id, number, url, state, isDraft, mergeable, mergeStateStatus, reviewDecision,
       isInMergeQueue, headRefOid, baseRefName,
@@ -208,7 +231,7 @@ pr_fetch() { # owner/name number
       removed_at: .timelineItems.nodes[0].createdAt,
       removed_reason: .timelineItems.nodes[0].reason
     }' <<<"$GH_JSON")
-  [ -n "$PR" ] || { GH_ERR="no such pull request"; return 2; }
+  [ -n "$PR" ] || { GH_ERR="no such pull request"; return 3; }
 }
 
 # What to do with a PR, as `action<TAB>reason<TAB>detail`.
@@ -291,7 +314,13 @@ pass_repo() { # owner/name entries
   while IFS=$'\t' read -r -u 3 seq number from since; do
     [ -n "$seq" ] || continue
     ref="$repo#$number"
-    pr_fetch "$repo" "$number" || continue
+    pr_fetch "$repo" "$number"; rc=$?
+    case $rc in
+      0) ;;
+      3) sent_back "$seq" "$ref" "$from" not_found "GitHub has no such pull request: $GH_ERR"
+         continue ;;
+      *) continue ;;
+    esac
     verdict queued "$since"
     case $V_ACTION in
       merged) merged "$seq" "$ref" "$from" ;;
@@ -305,7 +334,14 @@ pass_repo() { # owner/name entries
   while IFS=$'\t' read -r -u 3 seq number from sha held; do
     [ -n "$seq" ] || continue
     ref="$repo#$number"
-    pr_fetch "$repo" "$number" || break
+    pr_fetch "$repo" "$number"; rc=$?
+    case $rc in
+      0) ;;
+      3) sent_back "$seq" "$ref" "$from" not_found "GitHub has no such pull request: $GH_ERR" \
+           || break
+         continue ;;
+      *) break ;;
+    esac
     verdict waiting "$sha"
     case $V_ACTION in
       merged) merged "$seq" "$ref" "$from" || break ;;
@@ -348,8 +384,26 @@ pass_repo() { # owner/name entries
       | [.seq, .pr, .from, .sha, (.held_at // "-")] | @tsv' <<<"$all")
 }
 
+# One unanswered pass is a flap and says nothing. The count lives in a file because each
+# pass of the loop runs in a pipeline's subshell; a pass that asked GitHub nothing leaves it
+# as it is, since it learned nothing either way.
+tally() {
+  local f=$dir/unanswered n=0
+  [ -f "$f" ] && n=$(head -n 1 "$f")
+  if [ -n "$PASS_ERR" ]; then
+    n=$((n + 1))
+    printf '%s\n%s\n' "$n" "${PASS_ERR%%$'\n'*}" > "$f"
+    [ "$n" -eq 4 ] && printf 'query-failed for 4 passes: %s\n' "${PASS_ERR%%$'\n'*}"
+  elif [ -n "$PASS_OK" ] && [ -f "$f" ]; then
+    [ "$n" -ge 4 ] && printf 'query-recovered after %s passes\n' "$n"
+    rm -f "$f"
+  fi
+  return 0
+}
+
 pass() {
   local all repo
+  PASS_OK=""; PASS_ERR=""
   lock pass 1 || return 0          # another pass is at work; it sees the same ledger
   all=$(entries) || {
     unlock pass
@@ -361,6 +415,7 @@ pass() {
     pass_repo "$repo" "$all"
   done < <(jq -r '[.[] | select(.status == "waiting" or .status == "enqueued") | .repo]
       | unique | .[]' <<<"$all")
+  tally
   unlock pass
 }
 
@@ -469,6 +524,10 @@ cmd_status() {
         "from: \(.from)" ] | join("  ")' <<<"$all"
   if pid=$(runner_pid); then printf 'merge desk running (pid %s)\n' "$pid"
   else printf 'no merge desk is running\n'; fi
+  if [ -f "$dir/unanswered" ]; then
+    printf 'GitHub has not answered for %s passes: %s\n' \
+      "$(sed -n 1p "$dir/unanswered")" "$(sed -n 2p "$dir/unanswered")"
+  fi
 }
 
 cmd_outbox() {

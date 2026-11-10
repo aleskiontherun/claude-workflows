@@ -53,9 +53,11 @@ assert_lacks() { # name needle haystack
 # ---------------------------------------------------------------- the stub `gh`
 #
 # A query reads $STUB/<owner>.<name>.<number>.json, the whole response; with no such file
-# it fails the way a dead network does. A mutation succeeds unless $STUB/enqueue-<id>
-# says otherwise:
+# it fails the way a dead network does, and a file that is an errors body is answered the
+# way gh answers one: the body, its own line on stderr, exit 1. A mutation succeeds unless
+# $STUB/enqueue-<id> says otherwise:
 #   DOWN          no answer at all
+#   LIMITED       a RATE_LIMITED errors body
 #   REFUSE:<msg>  GitHub's errors body, gh's own line on stderr, exit 1
 #   RACE:<msg>    the same refusal, and the PR is in the queue by the time it is read again
 # Every call is one line in $STUB/calls and in $ALL_CALLS; anything that is not
@@ -86,6 +88,10 @@ case $q in
     mode=$(cat "$STUB/enqueue-$id" 2>/dev/null)
     case $mode in
       DOWN) echo "HTTP 502 Bad Gateway" >&2; exit 1 ;;
+      LIMITED)
+        jq -nc '{errors: [{type: "RATE_LIMITED", message: "API rate limit exceeded"}]}'
+        echo "gh: API rate limit exceeded" >&2
+        exit 1 ;;
       REFUSE:*|RACE:*)
         if [ "${mode%%:*}" = RACE ]; then
           f=$(grep -l "\"id\":\"$id\"" "$STUB"/*.json)
@@ -105,7 +111,11 @@ case $q in
     log "query $owner/$name#$number"
     f="$STUB/$owner.$name.$number.json"
     [ -f "$f" ] || { echo "HTTP 502 Bad Gateway" >&2; exit 1; }
-    cat "$f" ;;
+    cat "$f"
+    if jq -e '.errors' >/dev/null 2>&1 < "$f"; then
+      echo "gh: $(jq -r '.errors[0].message' < "$f")" >&2
+      exit 1
+    fi ;;
   *) log "unexpected $*"; exit 2 ;;
 esac
 GH
@@ -168,6 +178,12 @@ pr() { # owner/name number [key=value ...]
         timelineItems: {nodes: (if $p.removed_at
           then [{createdAt: $p.removed_at, reason: $p.removed_reason}] else [] end)}
       }}}}' > "$STUB/${repo%%/*}.${repo#*/}.$n.json"
+}
+
+errors() { # owner/name number type message -> the fixture is GitHub's errors body
+  jq -nc --arg t "$3" --arg m "$4" \
+    '{data: {repository: {pullRequest: null}}, errors: [{type: $t, message: $m}]}' \
+    > "$STUB/${1%%/*}.${1#*/}.$2.json"
 }
 
 echo "ontherun-merge-desk.sh"
@@ -350,6 +366,75 @@ rm "$STUB/acme.api.51.json"
 desk run --once
 assert_eq    "no answer: that repo's line holds, the other repo's moves" "PR_53" "$(enqueues)"
 assert_lacks "no answer: and nothing is sent back on it" sent_back "$(cat "$LEDGER")"
+assert_eq    "no answer: one such pass says nothing" \
+  'enqueued acme/web#53 position=1 from="-"' "$OUT"
+desk run --once; desk run --once
+assert_eq    "no answer: nor the third" "" "$OUT"
+desk run --once
+assert_eq    "no answer: the fourth in a row says so, with gh's words" \
+  "query-failed for 4 passes: HTTP 502 Bad Gateway" "$OUT"
+desk run --once
+assert_eq    "no answer: and only once" "" "$OUT"
+desk status
+assert_has   "no answer: status counts them" \
+  "GitHub has not answered for 5 passes: HTTP 502 Bad Gateway" "$OUT"
+pr acme/api 51
+desk run --once
+assert_has   "no answer: the pass that ends them says so" "query-recovered after 5 passes" "$OUT"
+assert_eq    "no answer: and the line moves, in order" "PR_53 PR_51 PR_52" "$(enqueues)"
+desk status
+assert_lacks "no answer: status stops counting" "has not answered" "$OUT"
+
+fresh
+pr acme/api 51
+desk submit 'acme/api#51'
+rm "$STUB/acme.api.51.json"
+desk run --once; desk run --once
+pr acme/api 51
+desk run --once
+assert_eq "no answer: a short run of them ends without a word" \
+  'enqueued acme/api#51 position=1 from="-"' "$OUT"
+
+fresh
+pr acme/api 51; pr acme/web 53 isInMergeQueue=true
+desk submit 'acme/api#51'; desk submit 'acme/web#53'
+rm "$STUB/acme.api.51.json"
+for _ in 1 2 3 4; do desk run --once; done
+assert_has "no answer: one repo unanswered is a failed pass though another answers" \
+  "query-failed for 4 passes" "$OUT"
+
+fresh
+pr acme/api 51; pr acme/api 52
+desk submit 'acme/api#51' --from "Plan A"; desk submit 'acme/api#52'
+errors acme/api 51 RATE_LIMITED "API rate limit exceeded"
+desk run --once
+assert_eq    "rate limit: not an answer about the PR, so the line holds" "|" "$OUT|$(enqueues)"
+assert_lacks "rate limit: and nothing is sent back" sent_back "$(cat "$LEDGER")"
+errors acme/api 51 FORBIDDEN "Resource not accessible by personal access token"
+for _ in 1 2 3; do desk run --once; done
+assert_eq    "errors not about the PR count as unanswered passes" \
+  "query-failed for 4 passes: Resource not accessible by personal access token" "$OUT"
+
+fresh
+pr acme/api 51; pr acme/api 52
+desk submit 'acme/api#51' --from "Plan A"; desk submit 'acme/api#52'
+errors acme/api 51 NOT_FOUND "Could not resolve to a PullRequest with the number of 51."
+desk run --once
+assert_has "not found: a waiting PR GitHub no longer has is sent back" \
+  'sent-back acme/api#51 reason=not_found tell="Plan A"' "$OUT"
+assert_eq  "not found: and does not hold the line" "PR_52" "$(enqueues)"
+errors acme/api 52 NOT_FOUND "Could not resolve to a Repository with the name 'acme/api'."
+desk run --once
+assert_eq  "not found: so is one that was in the queue" \
+  'sent-back acme/api#52 reason=not_found tell="-"' "$OUT"
+desk status
+assert_lacks "not found: is an answer, not an unanswered pass" "has not answered" "$OUT"
+
+fresh
+pr someone/2048 7; pr true/null 8
+desk submit 'someone/2048#7'; desk submit 'true/null#8'
+assert_eq "a repo named like a number or a literal is still a string" \
+  "query someone/2048#7 query true/null#8" "$(tr '\n' ' ' < "$STUB/calls" | sed 's/ $//')"
 
 # ------------------------------------------------------------- what the mutation says
 fresh; pr acme/api 61; pr acme/api 62
@@ -371,7 +456,12 @@ assert_eq "raced: a PR something else enqueued is in the queue, not sent back" \
 
 fresh; pr acme/api 61; pr acme/api 62
 desk submit 'acme/api#61' --from "Plan A"; desk submit 'acme/api#62'
+echo LIMITED > "$STUB/enqueue-PR_61"
+desk run --once
+assert_eq    "mutation rate-limited: the line holds" "|PR_61" "$OUT|$(enqueues)"
+assert_lacks "mutation rate-limited: and the PR is not sent back" sent_back "$(cat "$LEDGER")"
 echo DOWN > "$STUB/enqueue-PR_61"
+: > "$STUB/calls"
 desk run --once
 assert_eq "mutation unanswered: nothing is said" "" "$OUT"
 assert_eq "mutation unanswered: and the line holds" "PR_61" "$(enqueues)"

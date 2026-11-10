@@ -115,6 +115,7 @@ reporter:
 | `dequeued` | someone took it out by hand; ask before reporting it again |
 | `removed` | GitHub's own reason is the detail |
 | `closed` | nothing to do |
+| `not_found` | GitHub no longer has the PR; nothing to do |
 
 ## What the human sees
 
@@ -126,9 +127,10 @@ acme/api — #114 merged; #116 enqueued, 2 waiting
 
 Speak at once, with the PR and the reason, when the desk cannot do its job by itself:
 `refused` and `review_required` (a setting or a person, not something the reporter can
-fix), `dequeued`, a reporter that could not be reached, a `broken:` line, and **the same PR
-sent back a third time** — a PR bouncing between the desk and its reporter is a loop only a
-human ends.
+fix), `dequeued`, a reporter that could not be reached, a `broken:` line, a `query-failed`
+line — GitHub has stopped answering the desk, usually an expired token, and every line
+holds until it answers again — and **the same PR sent back a third time**: a PR bouncing
+between the desk and its reporter is a loop only a human ends.
 
 ## Stopping, and picking up
 
