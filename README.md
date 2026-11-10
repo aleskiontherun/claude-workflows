@@ -29,6 +29,7 @@ Everything ships as one plugin, `ontherun`, so skills are `/ontherun:implement` 
 | `conduct` | verifies what landed, launches implementer subagents wave by wave, runs a merge queue per repo, closes the plan out | an approved plan should be built |
 | `verify-plan` | re-reads the trees to say what a plan actually shipped, rewrites its Status, files it under `done/`, hands off the rest | "is this plan done?" |
 | `product-analysis` | market, competitors, demand, inventory from code, gaps, next moves | "how do we stack up / what next?" |
+| `merge-desk` | takes "ready to merge" reports from every session, adds those PRs to GitHub's merge queue in the order reported, sends each failure back to its reporter | several sessions land PRs in the same repos |
 
 **Agents** (spawned by the skills as `ontherun:<name>`, never by hand)
 
@@ -68,7 +69,8 @@ skills call them by their full path under the plugin root; `bin/` is also on the
 | `ontherun-plan-fold-diff.sh <plan> [<base>]` | writes the diff of one plan edit for `fold-checker` |
 | `ontherun-plan-fold-sweep.sh [--all] [--rare N] <plan> <diff>` | lists where values an edit removed still stand in the plan |
 | `ontherun-merge-monitor.sh [--once] <repo> <branch>…` | polls a repo's PRs and prints the merge-queue head when it changes |
-| `ontherun-lib.sh` | shared functions the scripts source: workspace root, plans directory, default branch, GitHub slug |
+| `ontherun-merge-desk.sh submit <pr> \| run \| watch \| status \| outbox \| told <seq>…` | keeps the merge desk's ledger of reported PRs and enqueues them in GitHub's merge queue in report order |
+| `ontherun-lib.sh` | shared functions the scripts source: workspace root, plans directory, default branch, GitHub slug, a bounded `gh` call |
 
 The scripts find the workspace root from the plan path you give them; with a plans directory
 named anything other than `plans`, set `ONTHERUN_WORKSPACE` to the root.
@@ -255,6 +257,28 @@ with your go-ahead rewrites the Status and moves the plan to `plans/done/`.
 /ontherun:verify-plan account-deletion
 ```
 
+### Several sessions, one merge queue
+
+In repos that land PRs through GitHub's merge queue, one session can be the only thing that
+enqueues:
+
+```
+/ontherun:merge-desk
+```
+
+Every other session reports a PR that is ready instead of merging it:
+
+```bash
+ontherun-merge-desk.sh submit https://github.com/acme/acme-api/pull/114 --from "<its session name>"
+```
+
+The desk enqueues in the order the reports arrived, one line per repo, and that is all it
+does to a PR. One that GitHub will not take, or takes out of the queue — a conflict, a
+failed check, a head that moved — goes back to the session that reported it with the
+reason; that session fixes it and reports it again. The ledger is a file, by default under
+`~/.local/state/ontherun/merge-desk/`, so a desk that is restarted owes what the last one
+owed.
+
 ### Product analysis
 
 ```
@@ -268,7 +292,8 @@ with your go-ahead rewrites the Status and moves the plan to `plans/done/`.
   plain `Bash` for `git` and `gh` reads, and each one's body says it writes nothing, as the
   verifier's does.
 - **Claude Code tools the skills rely on**: `AskUserQuestion` (`plan`, `conduct`),
-  `SendMessage` and `TaskStop` (`conduct`, to resume implementers and replace monitors),
+  `SendMessage` and `TaskStop` (`conduct`, to resume implementers and replace monitors;
+  `merge-desk`, with `ListAgents`, to reach the sessions that reported a PR),
   and `Monitor` with `PushNotification` for the merge queue — without those two, run
   `ontherun-merge-monitor.sh --once` whenever you want the queue's state. A `Monitor` expires after
   at most 30 minutes; `conduct` re-arms it. The desktop app's session tools are optional,

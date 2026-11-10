@@ -2,7 +2,7 @@
 # Shared by the ontherun- scripts beside this file; sourced, never run. It resolves the terms
 # reference/workspace.md defines, so every script answers "which directory is
 # the workspace root", "which ref is this repo's default branch" and "which GitHub repo is
-# this checkout" the same way.
+# this checkout" the same way -- and bounds a `gh` call the same way for each.
 #
 #   . "$(wf_here)/ontherun-lib.sh"      -- see any ontherun- script for the two-line preamble
 #
@@ -105,4 +105,37 @@ wf_slug() { # repo-dir -> owner/name
     */*) printf '%s\n' "$s" ;;
     *) return 1 ;;
   esac
+}
+
+# One command, bounded: its output -- stdout and stderr together -- and its exit status,
+# or `gh: no response after <seconds>s` and a non-zero status when it hangs. TERM rather
+# than an alarm, because gh is a Go binary and Go ignores SIGALRM. Output goes to a file
+# rather than a pipe so that a child surviving the kill cannot hold the caller's $(...)
+# open.
+wf_gh_bounded() { # seconds cmd... -> output
+  local limit=$1 f pid wd rc
+  shift
+  f=$(mktemp "${TMPDIR:-/tmp}/ontherun-gh.XXXXXX") || return 1
+  "$@" >"$f" 2>&1 &
+  pid=$!
+  (
+    sleep "$limit" & s=$!
+    trap 'kill "$s" 2>/dev/null; exit 0' TERM
+    wait "$s"
+    : >"$f.timeout"
+    kill -TERM "$pid" 2>/dev/null
+    sleep 2 & s=$!
+    wait "$s"
+    kill -KILL "$pid" 2>/dev/null
+  ) </dev/null >/dev/null 2>&1 &
+  wd=$!
+  wait "$pid"; rc=$?
+  kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
+  if [ $rc -ne 0 ] && [ -e "$f.timeout" ]; then
+    printf 'gh: no response after %ss\n' "$limit"
+  else
+    cat "$f"
+  fi
+  rm -f "$f" "$f.timeout"
+  return $rc
 }
