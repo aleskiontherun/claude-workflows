@@ -21,7 +21,13 @@ thing you do to a PR that is ready.
 ## 2. Wait for the checks
 
 Run `gh pr checks <pr> --watch --fail-fast` as a background Bash, so its exit wakes you.
-Green, or a PR with no checks at all: step 4. Anything failed: step 3.
+Green: step 4. Anything failed: step 3.
+
+**"No checks reported" straight after a push means they have not registered yet**, not that
+there are none: wait a minute and watch again. A PR has no checks only when the repo runs
+none on pull requests — nothing on this PR's earlier commits either, and still nothing
+minutes after the push. Only then does it go to step 4 unchecked; a PR reported before its
+checks start holds every PR behind it at the desk.
 
 ## 3. Fix what failed
 
