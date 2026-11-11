@@ -25,6 +25,7 @@ Everything ships as one plugin, `ontherun`, so skills are `/ontherun:implement` 
 | `implement` | implements a task, then hands off to `review-loop` | "implement / add / fix X" — any PR-sized change |
 | `review-loop` | reviewer → validators → fix → repeat until clean, then opens or updates the PR and stops | a branch already has the changes |
 | `sync-main` | merges the default branch into an in-flight branch, resolves conflicts, re-checks the branch against what arrived | a PR is stale or conflicting |
+| `land` | watches an open, reviewed PR's CI, fixes what fails on the branch, reports the PR to the merge desk once it is green, and fixes and re-reports what the desk sends back | a PR should get from "opened" to merged without you watching CI |
 | `plan` | researches a feature, asks you the product calls, writes a plan with a DAG of PR-sized nodes, runs the plan-review loop, presents it | a feature too big for one PR |
 | `conduct` | verifies what landed, launches implementer subagents wave by wave, runs a merge queue per repo, closes the plan out | an approved plan should be built |
 | `verify-plan` | re-reads the trees to say what a plan actually shipped, rewrites its Status, files it under `done/`, hands off the rest | "is this plan done?" |
@@ -271,6 +272,9 @@ Every other session reports a PR that is ready instead of merging it:
 ```bash
 ontherun-merge-desk.sh submit https://github.com/acme/acme-api/pull/114 --from "<its session name>"
 ```
+
+`/ontherun:land` does that for a session: it waits for the PR's checks, fixes the ones that
+fail, reports the PR when they are green, and handles what the desk sends back.
 
 The desk enqueues in the order the reports arrived, one line per repo, and that is all it
 does to a PR. One that GitHub will not take, or takes out of the queue — a conflict, a
