@@ -18,7 +18,8 @@
 # release  gives up every slot of the pool the owner holds. Exits 0 when it held none.
 # list     prints one line per lease, tab-separated: pool, slot, `held` or `stale`, age
 #          in seconds, owner.
-# reap     removes the stale leases and prints each in list's format with `reaped`.
+# reap     removes the stale leases and prints what list prints, with `reaped` in place
+#          of `stale` on each lease it removed.
 #
 # The owner is a directory: --owner, else the git top level of the working directory,
 # else the working directory. A session in its own worktree therefore owns its lease
