@@ -46,6 +46,16 @@ and a subagent starts with no project context at all. Read the files.
   `Cargo.toml`, `go.mod` — and from the CI workflows under `.github/workflows/`, and say
   that you inferred them. Honour every environment caveat those files state: a suite
   that skips itself without a variable is green and proves nothing.
+- **A machine-wide resource the project pools is leased, never created.** Where the
+  project's docs name a pool and its size for something every session on the machine
+  shares — a device simulator, a local port, a scratch database — take a slot with
+  `ontherun-lease.sh acquire <pool> <size>`, in the plugin's `bin/` (the plugin root is the
+  parent of this file's `reference/` directory), and use the resource the docs map that
+  slot number to. Acquire again before each stretch of use, which renews the lease; reset
+  the resource after acquiring it, since the previous holder may have left state behind;
+  release it with `ontherun-lease.sh release <pool>` when the work is handed over. Creating
+  a fresh one instead leaves it behind for nobody to remove. The script's header has the
+  rest. Docs that name no pool mean there is nothing to lease.
 - **Grep the decision record before calling anything odd.** Search it for the symbol,
   table or concept involved; if the choice is explained there, it is not a finding.
   Append to it only where the instruction files say entries belong, and keep an entry

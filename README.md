@@ -50,7 +50,7 @@ share; nothing restates them.
 
 | File | Defines |
 | --- | --- |
-| `project-docs.md` | where a project's rules live (`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `DECISIONS.md`, `README.md`) and how to treat each |
+| `project-docs.md` | where a project's rules live (`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `DECISIONS.md`, `README.md`) and how to treat each, and how a resource the project pools is leased |
 | `workspace.md` | workspace root, plans repo, node repos, default branch, worktree and branch names, `gh -R` |
 | `plan-format.md` | the plan document: Status block and ledger, `## State` DAG, node kinds, statuses, optional sections |
 | `plan-review-loop.md` | the loop `plan` and `conduct` run over plans |
@@ -71,6 +71,7 @@ skills call them by their full path under the plugin root; `bin/` is also on the
 | `ontherun-plan-fold-sweep.sh [--all] [--rare N] <plan> <diff>` | lists where values an edit removed still stand in the plan |
 | `ontherun-merge-monitor.sh [--once] <repo> <branch>…` | polls a repo's PRs and prints the merge-queue head when it changes |
 | `ontherun-merge-desk.sh submit <pr> \| run \| watch \| status \| outbox \| told <seq>…` | keeps the merge desk's ledger of reported PRs and enqueues them in GitHub's merge queue in report order |
+| `ontherun-lease.sh acquire <pool> <size> \| release <pool> \| list \| reap` | leases one slot of a fixed-size pool of a machine-wide resource, so sessions reuse a bounded set instead of each creating their own |
 | `ontherun-lib.sh` | shared functions the scripts source: workspace root, plans directory, default branch, GitHub slug, a bounded `gh` call |
 
 The scripts find the workspace root from the plan path you give them; with a plans directory
@@ -146,6 +147,17 @@ what the project ships (`reference/project-docs.md` is the full rule):
 - **`DECISIONS.md`** (or `docs/adr/`) — grepped before any reviewer or validator calls a choice
   wrong; only appended to where the project's docs say entries belong.
 - **`README.md`** — conventions and commands when the others are silent.
+
+- **A pool, when the project names one** — for a resource every session on the machine shares,
+  the docs give a pool name, a size and what a slot number maps to, and sessions lease a slot
+  with `ontherun-lease.sh` instead of creating their own. For example, in a
+  `CONTRIBUTING.md`:
+
+  ```markdown
+  Simulators are pooled: run `ontherun-lease.sh acquire sim 4` and use the simulator named
+  `agent-sim-<slot>`, creating it only if it does not exist. Uninstall the app from it
+  before the first install. Run `ontherun-lease.sh release sim` when the PR is open.
+  ```
 
 A repo with none of these is not treated as broken, and the workflows never add the files on
 their own. Where the project's docs disagree with a default here (PR title format, base
