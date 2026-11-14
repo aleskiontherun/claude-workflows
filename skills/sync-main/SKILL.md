@@ -72,6 +72,33 @@ which rewrites the shas `review-loop` recorded to scope its rounds, leaving its 
 pointing at commits that no longer exist; a merge disturbs that scoping recoverably (step 5).
 Rebase only if the human asks by name, or the repo's own docs require a linear history.
 
+### A branch cut from another PR's branch
+
+A branch built on a PR that had not merged yet carries that PR's commits. Once the PR is
+squash-merged, the default branch holds the same change as one commit with no ancestry in
+common, and a plain merge conflicts on every line this branch edited after it. So the
+squash is absorbed in four merges, with `<S>` the PR's squash commit on the default branch
+(`gh pr view <n> --json mergeCommit`) and `<n>` its number:
+
+```bash
+git -C $REPO fetch origin <default>
+git -C $REPO fetch origin pull/<n>/head
+git -C $REPO merge FETCH_HEAD         # the PR's final head: any fix pushed after you branched
+git -C $REPO merge <S>^               # the default branch as it stood before the PR landed
+git -C $REPO merge -s ours <S>        # the squash itself: everything in it is already here
+git -C $REPO merge $MAIN              # whatever landed after it
+```
+
+**`-s ours` is safe only in that position** — after the PR's final head and `<S>^` are both in, the
+squash adds nothing this branch lacks; anywhere else it silently discards what the default
+branch added. Check it: `git -C $REPO diff <S> HEAD --stat` straight after the third merge
+lists only this branch's own work.
+
+Skip all of this when the PR landed as a merge commit — `git -C $REPO merge-base
+--is-ancestor <its head> $MAIN` succeeds — because the ancestry is real and the plain merge
+below works. Conflicts in the first, second and last merge are ordinary ones, resolved as
+follows.
+
 Conflict classes where the obvious resolution is wrong:
 
 - **Lockfiles** — `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `uv.lock`,
@@ -161,4 +188,4 @@ that git had merged clean. Don't merge the PR; don't pick up the next task unask
 - The first review of a branch — `review-loop`.
 - Syncing several branches in one pass — each has its own worktree and checks; one run each.
 - Rewriting history — no rebase, squash or force-push unless the human asks by name.
-- Merging or closing the PR — always the human.
+- Merging or closing the PR — never this skill.

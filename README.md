@@ -24,7 +24,7 @@ Everything ships as one plugin, `ontherun`, so skills are `/ontherun:implement` 
 | --- | --- | --- |
 | `implement` | implements a task, then hands off to `review-loop` | "implement / add / fix X" — any PR-sized change |
 | `review-loop` | reviewer → validators → fix → repeat until clean, then opens or updates the PR and stops | a branch already has the changes |
-| `sync-main` | merges the default branch into an in-flight branch, resolves conflicts, re-checks the branch against what arrived | a PR is stale or conflicting |
+| `sync-main` | merges the default branch into an in-flight branch — absorbing the squash of a PR the branch was built on — resolves conflicts, re-checks the branch against what arrived | a PR is stale or conflicting |
 | `land` | reports an open, reviewed PR to the merge desk without waiting for CI, then fixes on the branch whatever the desk sends back — failed checks, a conflict — and reports it again | a PR should get from "opened" to merged without you watching CI |
 | `plan` | researches a feature, asks you the product calls, writes a plan with a DAG of PR-sized nodes, runs the plan-review loop, presents it | a feature too big for one PR |
 | `conduct` | verifies what landed, launches implementer subagents wave by wave, reports each PR to the merge desk or queues it for you to merge, closes the plan out | an approved plan should be built |
@@ -252,15 +252,21 @@ caps. You approve the plan; nothing launches before that.
 ```
 
 The conductor verifies what has already landed (a `verifier`, never its own memory),
-launches every node whose dependencies are merged — in parallel, each implementer in its own
-worktree under `<repo>/.claude/worktrees/`. Each PR is reported to the merge desk the moment
+launches every node whose dependencies are merged or open and reviewed — in parallel, each
+implementer in its own worktree under `<repo>/.claude/worktrees/`, a node built on an
+unmerged PR cut from that PR's branch. Each PR is reported to the merge desk the moment
 its implementer returns, without waiting for CI; the desk enqueues it when its checks are
 green, and a failure goes back through the conductor to the implementer that built it. You
 see one line per repo:
 
 ```
-acme-api — #114 merged; #116, #117 with the desk
+acme-api — #114 merged; #116, #117 with the desk; #119 built on #116
 ```
+
+A PR built on another is held back from the desk until that one merges, then absorbs the
+merge and is reported. If a late fix changes what the earlier PR delivers, the conductor
+forwards the change to whatever was built on it; say "wait for merges" at the wave plan to
+launch only on merged work instead.
 
 A node marked `merge: owner` in the plan's `## State` block waits for you instead — the
 conductor marks the ones you ask to see first, and those it gives `implementer-high` — in a

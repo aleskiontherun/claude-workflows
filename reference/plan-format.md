@@ -159,11 +159,12 @@ In the single-repo layout every node has `repo: .` and `repos: [.]`.
 | `id` | Stable handle, prefixed by repo — `api-`, `web-`, `lib-`. A repo's prefix is the one its earlier nodes in this plans directory already use; a repo's first node gets a short one named after what it holds. Match the numbering the prose build order uses. |
 | `repo` | The checkout the node's PR lands in, as a path relative to the workspace root, or `.` for the root itself (`workspace.md`). Never the plans repo. |
 | `title` | The PR title, so the conductor and the verifier search for the same string. |
-| `needs` | DAG edges — ids that must be *satisfied* first: `merged`, `done` or `dropped`. `[]` means it can start now. |
+| `needs` | DAG edges — ids that must be *satisfied* before this node's PR merges: `merged`, `done` or `dropped`. The node can launch earlier, on a need that is open and reviewed (`conduct` §3). `[]` means it can start now. |
 | `agent` | Which agent definition implements it: `implementer` or `implementer-high`. Sets model and effort. The conductor spawns it under the plugin's namespace, `ontherun:<agent>`. |
 | `status` | See *Statuses*. |
 | `branch`, `pr`, `sha` | Filled in as they become known. `sha` is the squash commit on the default branch. |
 | `merged` | `YYYY-MM-DD` the PR merged, written with `sha`; the ledger prints it. |
+| `base` | The id of the same-repo node whose unmerged branch this node's branch was cut from. Written by the conductor at launch, removed when the implementer reports `STACKED_ON: none`. While it is there, the node's PR is not reported to the merge desk. |
 | `merge` | `owner` — the node's PR waits for the owner to merge it. Omitted, the conductor reports the PR to the merge desk as soon as it is opened (`conduct` §5). Written by the conductor at the wave plan, or by the plan's author where the owner already said. |
 | `reason` | Why a `blocked` node is blocked, one line — what it waits on; the ruling itself lives in the prose. |
 | `delivered` | The contract surface the node actually built, from its implementer's own report — a few `path:line — what` bullets. Filled in with `pr`. |
@@ -229,9 +230,9 @@ once which node is waiting and on what, and doesn't nag.
 
 | Status | Means | What the conductor does |
 | --- | --- | --- |
-| `pending` | Not started | Launch when every `needs` id is satisfied — `merged`, `done` or `dropped` |
+| `pending` | Not started | Launch when every `needs` id is satisfied — `merged`, `done` or `dropped` — or open to build on (`conduct` §3) |
 | `running` | An implementer is working on it | Nothing — wait for it to return |
-| `open` | PR opened and reviewed, not yet merged | Reports it to the merge desk and relays what comes back — or, for `merge: owner`, lets it wait its turn in that repo's owner's queue |
+| `open` | PR opened and reviewed, not yet merged | Reports it to the merge desk once every `needs` id is satisfied, and relays what comes back — or, for `merge: owner`, lets it wait its turn in that repo's owner's queue. Its dependents may launch on it |
 | `draft-pr` | PR exists but is marked draft | **Stop and ask** — a draft never fires a merge |
 | `merged` | On the default branch, verified against the tree | Unblocks its dependents |
 | `done` | A `setup`/`manual` node's `check:` passed | Unblocks its dependents; never used for a `pr` node |

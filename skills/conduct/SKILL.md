@@ -1,6 +1,6 @@
 ---
 name: conduct
-description: Conduct an approved plan to done -- verifying what has actually landed before acting on it, launching implementer subagents wave by wave across whichever repos its nodes land in as their dependencies merge, reporting each finished PR to the merge desk and relaying what it sends back, queueing the PRs the owner wants to merge by hand, and closing the plan out after the final merge. Use when the user wants a plan continued, picked up, resumed, a wave launched, a plan conducted, or a plan carried through to merged. Writing a plan, deepening a DRAFT or getting one reviewed is plan.
+description: Conduct an approved plan to done -- verifying what has actually landed before acting on it, launching implementer subagents wave by wave across whichever repos its nodes land in, each as soon as what it needs is open and reviewed rather than merged, reporting each finished PR to the merge desk and relaying what it sends back, queueing the PRs the owner wants to merge by hand, and closing the plan out after the final merge. Use when the user wants a plan continued, picked up, resumed, a wave launched, a plan conducted, or a plan carried through to merged. Writing a plan, deepening a DRAFT or getting one reviewed is plan.
 argument-hint: "[plan path]"
 effort: high
 ---
@@ -67,7 +67,7 @@ verifier runs.
 | --- | --- |
 | `draft` | `plan` §3 — hand it back |
 | `not_started` | Write the block from the proposal, show the wave plan, launch on approval |
-| `partial` or `awaiting_merge` | Update the block. **Relaunch nothing that has a branch or a PR** — that work exists. Take §5 for the open PRs — report the desk's, queue the owner's, arm the monitor — then launch (§3) every `pending` node whose `needs` are satisfied and that has no branch. With nothing to launch, show §5's line per repo and, where a PR waits on the owner, ask them to merge it or say what's wrong with it |
+| `partial` or `awaiting_merge` | Update the block. **Relaunch nothing that has a branch or a PR** — that work exists. Take §5 for the open PRs — report the desk's, queue the owner's, arm the monitor — then launch (§3) every `pending` node that can launch and has no branch. With nothing to launch, show §5's line per repo and, where a PR waits on the owner, ask them to merge it or say what's wrong with it |
 | `regression` | One node scoped to the regression. Don't re-run the plan |
 | `shipped` | §6 — close it out |
 | `overtaken` | Report and ask. Neither `done/` nor a relaunch is right |
@@ -78,12 +78,31 @@ that dies here leaves the next one better off.
 
 **Carry over the `delivered:` entries the plan already records** — the verifier omits that
 field on purpose, and a block written straight from its proposal would erase the contract
-surface of every node merged before this session.
+surface of every node merged before this session. Carry over `merge:` and `base:` the same
+way; a `base:` naming a node that has since merged is §5's "your base merged" to send.
 
 ## 3. Launching a wave
 
-A wave is every `pending` node whose `needs` are all satisfied — `merged`, `done` or `dropped`. Launch the whole wave **at
-once** — one message, one `Agent` call per node — never one at a time.
+A wave is every `pending` node that can launch. Launch the whole wave **at once** — one
+message, one `Agent` call per node — never one at a time.
+
+**A node can launch when each of its `needs` is satisfied or open to build on.** Satisfied
+is `merged`, `done` or `dropped`. Open to build on is a `pr` node that is `open` — its PR
+exists and its review exited clean — and bound for the merge desk, with no send-back from
+the desk still unanswered. Waiting for the merge would buy only CI and queue time per edge
+of the DAG; what it would protect against, a late fix that changes the contract, is rare
+and is forwarded when it happens (§4). Three limits:
+
+- **At most one unmerged need in the node's own repo.** That one is the node's `base:` —
+  its branch is where the new branch is cut from. With two, wait until one merges.
+- **Never on a `merge: owner` node.** The owner has not looked yet, and what they ask for
+  would land under everything built on it.
+- **Never on a `blocked` or `draft-pr` node, or one whose PR the desk sent back** and whose
+  implementer has not answered with a new `pr_opened`. Nodes already running on it carry on.
+
+An unmerged need in another repo needs no base: its contract is read from its branch. The
+owner can switch all of this off for a plan — "wait for merges" at the wave plan — and then
+a node launches only when its `needs` are satisfied.
 
 **`setup` nodes are yours**, done in this session alongside the launch; a `manual` node is said
 to the owner once, with exactly what to do. When a `manual` node turns out to hold steps you
@@ -117,8 +136,14 @@ For each `pr` node:
   its half, what already landed (below), any ordering constraint, the PR title from the block,
   and the two names above.
 
+  **For a node built on an unmerged PR, also give that PR's number and branch**, and say
+  which case it is — its own repo, so the branch is its base, or another repo, so the
+  branch is where the contract is read (`implementer-protocol.md`, *Building on an unmerged
+  PR*). Write `base:` on a same-repo one as you launch it.
+
   **"What already landed" comes from its dependencies' `delivered:` lists**, never from the
-  plan's prose (`plan-format.md` says why). Hand those lines over as places to go read, naming
+  plan's prose (`plan-format.md` says why). For an unmerged dependency those lines are read
+  on its branch, not the default one — say so. Hand those lines over as places to go read, naming
   the **symbol or section**, with the line range as a hint. On a pickup with no `delivered:`
   recorded, use `verifier`'s evidence list.
 
@@ -145,7 +170,8 @@ answers back to that agent. It keeps its context; don't re-explain the task.
 
 **`RESULT: pr_opened`** — record `branch` and `pr`, set the node `open`, regenerate the ledger,
 commit. Copy its `DELIVERED` bullets into the node's `delivered:` and nowhere else — the ledger
-stays one line per node. Then §5: reported to the merge desk at once, or into the owner's
+stays one line per node. A report with `STACKED_ON: none` removes the node's `base:`. Then
+§5: reported to the merge desk once every `needs` id is satisfied, or into the owner's
 queue.
 
 **A non-empty `DIVERGED` is a plan finding, due before the next wave launches.** The
@@ -178,10 +204,16 @@ whatever is decided.
 **Don't notify here**; §5 owns notification.
 
 **A second `pr_opened` from an implementer you resumed is not a new PR.** The node is already
-`open` with that number; the head absorbed the default branch or a fix landed. A desk node
+`open` with that number; the head absorbed the default branch or its base's merge, or a fix
+landed. A desk node
 is reported again at the new head; an owner node's readiness is re-checked. Print §5's line. Still read `DELIVERED` and `DIVERGED`: a fix can add real API,
 so **extend `delivered:`**, and if the plan *prescribed* the defective thing, rewrite the
 prescription as an invariant, not just its value.
+
+**A `DELIVERED` that changed after dependents launched is forwarded, once, to each of them**
+— every `running` or `open` node that `needs` this one: `SendMessage` "what you built on
+changed" with the new lines. This is the rare case launching early accepts. An empty
+`DELIVERED` on a second `pr_opened` — a lint fix, a re-run, a clean sync — forwards nothing.
 
 **`RESULT: blocked`** — set the node `blocked`, write the reason into `reason:`, regenerate,
 commit, and bring it to the user. Don't relaunch or work around them. Anything that isn't one
@@ -196,7 +228,8 @@ instead**, in the queue further down. One monitor per repo watches both kinds.
 
 ### Reporting to the desk
 
-On a `pr_opened` for a node without `merge: owner`:
+On a `pr_opened` for a node without `merge: owner`, **once every one of its `needs` is
+satisfied** — a node built on an unmerged PR is held until then, however early it finished:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/bin/ontherun-merge-desk.sh submit <pr-url> --from "<your session's name>" --sha <head oid>
@@ -207,6 +240,10 @@ once. `--from` is your own session's name, as `ListAgents` gives it: the impleme
 subagent, and the desk's answer has to reach a session. The head is
 `gh pr view <n> -R <owner>/<name> --json headRefOid`.
 
+- **A held PR is reported when its last need merges.** A same-repo one first has to absorb
+  the merge: *When something leaves the queue* sends its implementer "your base merged",
+  and the `pr_opened` that answers, with `STACKED_ON: none`, is what you report. One held
+  only by a need in another repo is reported as it stands.
 - **Don't wait for the checks.** Watching them is the desk's job. An implementer's
   `pr_opened` is its word that the commit was reviewed, and that is all a report claims.
 - **A refusal is handled as a PR sent back** with the reason `submit` printed.
@@ -250,7 +287,8 @@ Derive it; don't store it.
 2. Everything else in `## State` block order, which `plan-format.md` requires to be DAG order —
    never PR number, which doesn't exist yet when the monitor is armed.
 3. `draft-pr` and `blocked` nodes are **not in the queue at all** — a draft at the head is a
-   queue that never moves — and neither is a node the desk has.
+   queue that never moves — and neither is a node the desk has, or one with a need that
+   has not merged yet.
 
 ### When the head is ready
 
@@ -320,20 +358,28 @@ work below and the second finds it done.
    `git -C <repo> merge-base --is-ancestor <sha> origin/<default>`; then record `merged`, the
    short `sha` and the `merged:` date. A PR gone draft is `draft-pr`. A `CLOSED` you didn't
    expect: stop and ask.
-2. **Recompute the owner's queue head**, and sync that one implementer if it's behind. If
+2. **On a merge, release what was built on it.** Each `open` node whose `base:` is the
+   merged node gets one `SendMessage`: your base merged, with the PR number and the squash
+   commit. A `running` one finds out by itself before it opens its PR. Each `open` node
+   held only by this merge, with no `base:`, is reported to the desk now.
+3. **Recompute the owner's queue head**, and sync that one implementer if it's behind. If
    the owner merged out of order, the head is whatever the order now says.
-3. **Re-read the plan from disk** and launch the newly unblocked wave (§3). Your context is the
-   thing most likely to have been compacted, and another session may have edited the plan.
+4. **Re-read the plan from disk** and launch the newly unblocked wave (§3). Your context is
+   the thing most likely to have been compacted, and another session may have edited the
+   plan.
 
-2 and 3 are independent, and 3 never waits for 2: a fresh implementer cuts from
+3 and 4 are independent, and 4 never waits for 3: a fresh implementer cuts from
 `origin/<default>` itself, so it already has the merge the queue is still working through.
+
+**A PR that closes or goes `blocked` with nodes built on it stops them**: launch nothing
+more on it, and bring it to the owner with the list of nodes that carry its commits.
 
 ### What the human sees
 
 One line per repo, and nothing else, printed when it changes:
 
 ```
-acme-api — #114 merged; #116, #117 with the desk
+acme-api — #114 merged; #116, #117 with the desk; #119 built on #116
 acme-api — yours next: #118 `feat(users)!: account deletion` — ready to merge (1 queued behind)
 ```
 
