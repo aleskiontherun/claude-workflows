@@ -20,7 +20,8 @@ anything is needed afterwards, with your full context.
 ## Step 1: establish where you are
 
 You were given a plan path, a node id, a repo (a path relative to the workspace root, `.` for
-the root itself), a worktree path and a branch name. Resolve the repo to an absolute path
+the root itself), a worktree path and a branch name — and, when the node is built on a PR
+that has not merged yet, that PR's number and branch (*Building on an unmerged PR*). Resolve the repo to an absolute path
 first, and its default branch (`workspace.md`). The worktree path should be absolute; if it
 isn't, resolve it against the workspace root — `git -C <repo> worktree add` would otherwise
 read it from inside the repo and nest a second copy of the repo's path.
@@ -85,7 +86,8 @@ it" and end in a duplicate PR.
   PR.
 - **No rows, from a call that succeeded** — a previous implementer of this node died before it
   pushed. Build it on the adopted branch, reading what is already there first
-  (`git -C <worktree> log --oneline origin/<default>..HEAD`) as a partial attempt to check,
+  (`git -C <worktree> log --oneline origin/<default>..HEAD`, or from `origin/<base branch>`
+  when you were given one) as a partial attempt to check,
   not trust.
 
 **`--no-track` is not optional.** Without it the branch tracks the default branch, and a bare
@@ -95,13 +97,35 @@ no PR. Push explicitly: `git -C <worktree> push -u origin HEAD`.
 Then:
 
 - **Run everything as `git -C <worktree> …`.** Don't work in the repo's main checkout —
-  siblings run against it at the same time — and never omit the `origin/<default>` start
-  point: a branch cut from a stale local default lacks the dependency that just merged on
-  GitHub.
+  siblings run against it at the same time — and never omit the start point, `origin/<default>`
+  or the base branch you were given: a branch cut from a stale local default lacks the
+  dependency that just merged on GitHub.
 - **Never work across two repos.** If the node seems to need changes in a second repo, that's
   another node and another implementer: say so and return `RESULT: blocked`.
 - **Where the repo has no test suite, its check is whatever it names instead** — a build, a
   bundle check, an example validated against a schema (`project-docs.md`).
+
+### Building on an unmerged PR
+
+The conductor launches a node as soon as what it needs is open and reviewed, without
+waiting for the merge. It then names the PR you build on.
+
+- **In your own repo** — a base branch. Cut your worktree from `origin/<base branch>`
+  instead of `origin/<default>`, in the command above. That ref is also the base you give
+  `review-loop` (its step 0.3: "unless you were told otherwise"), so the reviewer reads
+  your commits and not the base's.
+- **In another repo** — nothing to cut from. Read the contract at `origin/<its branch>` in
+  that repo's checkout, and give that path and ref to the reviewer as the sibling checkout
+  `review-loop` allows.
+- **Your PR still opens against the default branch**, with one line in its body: built on
+  `#<n>`, whose commits show in this diff until it merges.
+- **Before you open the PR, look whether the base merged while you worked**:
+  `gh pr view <n> -R <owner>/<name> --json state,mergeCommit`. `MERGED` — absorb it now,
+  with *A branch cut from another PR's branch* in the plugin's `skills/sync-main/SKILL.md`;
+  from then on your base is `origin/<default>`. `CLOSED` — `RESULT: blocked`. Still open —
+  carry on, and say so in your report (`STACKED_ON`).
+- **A base that changes under you is rare, and you will be told.** The conductor forwards
+  whatever a late fix to the base changed in its contract surface.
 
 ## Step 2: read before writing
 
@@ -180,6 +204,7 @@ RESULT: pr_opened
 NODE: api-2
 BRANCH: claude/api-2-account-deletion
 PR: 104
+STACKED_ON: none
 DELIVERED:
 - src/app/api/users.py:212 — DELETE /users/me, schedules the purge
 - src/app/models/user.py:44 — deletion_scheduled_at, nullable
@@ -210,7 +235,8 @@ report `RESULT: blocked`, with the unresolved findings in full in the prose summ
 
 **`DELIVERED` is the contract surface you created or changed** — the only thing the conductor
 can hand to the next node. Derive it from `git -C <worktree> diff origin/<default>...HEAD`, not
-from memory of what you set out to do. A handful of `path:line — what` bullets: routes, models,
+from memory of what you set out to do — or from `origin/<base branch>...HEAD` while your
+branch still carries an unmerged base, whose surface is its own node's to report. A handful of `path:line — what` bullets: routes, models,
 migrations, exported components, settings keys. Not a changelog.
 
 **`DIVERGED` is where the plan was wrong**, and `none` is the ordinary answer. Otherwise name
@@ -219,7 +245,12 @@ reads deleted_at; the column is deletion_scheduled_at (models/user.py:44); used 
 name`. Report a divergence you worked around, not only one that stopped you — the quiet ones
 leave the plan reading as if it had been right, and the next node reads it as its spec.
 
-**Both sections are required, even empty.** A missing heading reads as a truncated report.
+**`STACKED_ON` is the number of the unmerged same-repo PR your branch still carries**, or
+`none` — which is the answer for a node cut from the default branch, and for one that has
+absorbed its base's merge. The conductor holds a stacked PR back from the merge desk until
+this says `none`.
+
+**All three are required, even empty.** A missing heading reads as a truncated report.
 
 ## Being resumed
 
@@ -231,6 +262,14 @@ leave the plan reading as if it had been right, and the next node reads it as it
   changes what the code does. Push, and end with `RESULT: pr_opened` again — the conductor
   reports the new head; you still don't. `DELIVERED` carries whatever the fix changed in
   the contract surface, `none` when nothing did: a node that needs yours reads that list.
+- **"Your base merged", with its PR number and squash commit.** Absorb it — *A branch cut
+  from another PR's branch* in the plugin's `skills/sync-main/SKILL.md`, then the rest of
+  that skill, with the review round a sync can owe. End with `RESULT: pr_opened` and
+  `STACKED_ON: none`; the conductor then reports your PR to the desk.
+- **"What you built on changed", with the base's new `DELIVERED` lines.** A fix to the PR
+  you build on moved its contract surface. In your own repo, merge `origin/<base branch>`
+  into your branch first; then adapt your work to the lines you were sent, and re-review
+  through `review-loop`. If your PR was already open, end with `RESULT: pr_opened` again.
 - **"You are next for the owner to merge — the default branch moved, run `sync-main`."** The
   branch may have fallen several merges behind while you waited your turn; read the whole
   incoming range. Follow `sync-main`. If it resolved a conflict or repaired drift, run
