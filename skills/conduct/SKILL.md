@@ -1,6 +1,6 @@
 ---
 name: conduct
-description: Conduct an approved plan to done -- verifying what has actually landed before acting on it, launching implementer subagents wave by wave across whichever repos its nodes land in as their dependencies merge, reporting each finished PR to the merge desk and relaying what it sends back, queueing the PRs the owner wants to merge by hand, and closing the plan out after the final merge. Use when the user wants a plan continued, picked up, resumed, a wave launched, a plan conducted, or a plan carried through to merged. Writing a plan, deepening a DRAFT or getting one reviewed is plan.
+description: Conduct an approved plan to done -- verifying what has actually landed before acting on it, launching implementer subagents wave by wave across whichever repos its nodes land in as their dependencies merge, reporting each finished PR to the merge desk and relaying what it sends back, queueing PRs for the owner to merge in a repo with no merge queue, and closing the plan out after the final merge. Use when the user wants a plan continued, picked up, resumed, a wave launched, a plan conducted, or a plan carried through to merged. Writing a plan, deepening a DRAFT or getting one reviewed is plan.
 argument-hint: "[plan path]"
 effort: high
 ---
@@ -9,7 +9,7 @@ effort: high
 
 You are the conductor. You didn't write the plan and you don't write the code: you establish
 what has landed, launch the implementers that build the rest, get each PR merged — through
-the merge desk, or by the owner where they want to look first — and close the plan out. What you **don't** do yourself is whatever running the
+the merge desk, or by the owner in a repo the desk cannot feed — and close the plan out. What you **don't** do yourself is whatever running the
 work disqualifies you from judging: each node's code review belongs to its implementer's own
 `reviewer` and `validator`, and final verification to a `verifier` that took no part.
 
@@ -67,7 +67,7 @@ verifier runs.
 | --- | --- |
 | `draft` | `plan` §3 — hand it back |
 | `not_started` | Write the block from the proposal, show the wave plan, launch on approval |
-| `partial` or `awaiting_merge` | Update the block. **Relaunch nothing that has a branch or a PR** — that work exists. Take §5 for the open PRs — report the desk's, queue the owner's, arm the monitor — then launch (§3) every `pending` node whose `needs` are satisfied and that has no branch. With nothing to launch, show §5's line per repo and, where a PR waits on the owner, ask them to merge it or say what's wrong with it |
+| `partial` or `awaiting_merge` | Update the block. **Relaunch nothing that has a branch or a PR** — that work exists. Take §5 for the open PRs — report them to the desk, or queue them where the repo has no merge queue, and arm the monitor — then launch (§3) every `pending` node whose `needs` are satisfied and that has no branch. With nothing to launch, show §5's line per repo and, where a PR waits on the owner, ask them to merge it or say what's wrong with it |
 | `regression` | One node scoped to the regression. Don't re-run the plan |
 | `shipped` | §6 — close it out |
 | `overtaken` | Report and ask. Neither `done/` nor a relaunch is right |
@@ -100,11 +100,6 @@ For each `pr` node:
   split — gets that agent, the rest `implementer`. Change the block's `agent` field rather
   than the call, and say which tier each node got and why when you show the wave plan — the
   gate where the human can disagree.
-- **Where the node's PR goes is settled here**: to the merge desk, unless the node carries
-  `merge: owner` (`plan-format.md`). Write `merge: owner` on a node the owner wants to look
-  at before it merges, and on each node you give `implementer-high` — review is the only
-  gate a desk PR passes, and those are the nodes where a mistake costs most. Say which
-  nodes wait for the owner when you show the wave plan; the owner can flip either way.
 - **Don't pass `isolation: "worktree"`.** It would make a worktree of the repo your session
   runs in, which in a workspace layout holds no node repo at all. Each implementer makes its
   own worktree inside its node repo (`implementer-protocol.md`).
@@ -145,8 +140,7 @@ answers back to that agent. It keeps its context; don't re-explain the task.
 
 **`RESULT: pr_opened`** — record `branch` and `pr`, set the node `open`, regenerate the ledger,
 commit. Copy its `DELIVERED` bullets into the node's `delivered:` and nowhere else — the ledger
-stays one line per node. Then §5: reported to the merge desk at once, or into the owner's
-queue.
+stays one line per node. Then §5: reported to the merge desk at once.
 
 **A non-empty `DIVERGED` is a plan finding, due before the next wave launches.** The
 implementer worked around a wrong sentence, which is exactly why this is easy to file and
@@ -179,7 +173,8 @@ whatever is decided.
 
 **A second `pr_opened` from an implementer you resumed is not a new PR.** The node is already
 `open` with that number; the head absorbed the default branch or a fix landed. A desk node
-is reported again at the new head; an owner node's readiness is re-checked. Print §5's line. Still read `DELIVERED` and `DIVERGED`: a fix can add real API,
+is reported again at the new head; in a repo with no merge queue its readiness is re-checked.
+Print §5's line. Still read `DELIVERED` and `DIVERGED`: a fix can add real API,
 so **extend `delivered:`**, and if the plan *prescribed* the defective thing, rewrite the
 prescription as an invariant, not just its value.
 
@@ -189,14 +184,14 @@ of these three results is treated as `blocked`.
 
 ## 5. Getting PRs merged
 
-An open PR goes one of two ways. **By default it goes to the merge desk**: you report it the
-moment its implementer returns, the desk waits for its checks and feeds GitHub's merge
-queue, and nothing waits on a person. **A node marked `merge: owner` waits for the owner
-instead**, in the queue further down. One monitor per repo watches both kinds.
+**Every open PR goes to the merge desk**: you report it the moment its implementer returns,
+the desk waits for its checks and feeds GitHub's merge queue, and nothing waits on a person.
+The one exception is a repo with no merge queue, where the desk has nothing to feed and the
+owner merges, from the queue further down. One monitor per repo watches either.
 
 ### Reporting to the desk
 
-On a `pr_opened` for a node without `merge: owner`:
+On every `pr_opened`:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/bin/ontherun-merge-desk.sh submit <pr-url> --from "<your session's name>" --sha <head oid>
@@ -224,22 +219,24 @@ One message per report, from the desk's session, its first line starting `Merge 
   `head_moved`, `draft`, `timed_out`. `SendMessage` the reason and its detail, as they
   came, to that node's implementer; `implementer-protocol.md` says what it does with them.
   Its next `pr_opened` (§4) is reported again. An implementer that is gone is replaced as
-  the owner's queue describes: a new one of the node's tier, on the adopt path, given the
-  desk's reason as its job.
+  *A repo with no merge queue* describes: a new one of the node's tier, on the adopt path,
+  given the desk's reason as its job.
 - **`review_required`, `dequeued`** — a person's move. Say it to the owner at once; the node
   stays `open`.
-- **`refused`** — usually a repo with no merge queue. Write `merge: owner` on that node and
-  on every unmerged node in the same repo, say so once, and they join the owner's queue.
+- **`refused`** — usually a repo with no merge queue; GitHub's message is the detail. When
+  it is that, stop reporting that repo's PRs, write one sentence in the plan's Status prose
+  saying the owner merges there, say so once, and its open PRs join the queue below. Any
+  other refusal goes to the owner as it came.
 - **The same PR sent back a third time** — stop reporting it and bring it to the owner with
   the three reasons.
 
-### The owner's queue
+### A repo with no merge queue
 
-The open PRs of `merge: owner` nodes in one repo are a **queue**, and only its **head** —
-the one PR you ask the owner to merge next — is ever prepared for merge. Everything behind
+There the owner merges, and the repo's open PRs are a **queue**: only its **head** — the one
+PR you ask the owner to merge next — is ever prepared for merge. Everything behind
 it waits, stale on purpose: a PR that waits through three merges absorbs all three in one
-sync when its turn comes. One queue per repo, independent of every other. A desk PR is
-never synced for its turn: GitHub's queue merges it with whatever is ahead of it, and a
+sync when its turn comes. One queue per repo, independent of every other. A PR the desk has
+is never synced for its turn: GitHub's queue merges it with whatever is ahead of it, and a
 conflict comes back from the desk.
 
 ### Queue order
@@ -250,7 +247,7 @@ Derive it; don't store it.
 2. Everything else in `## State` block order, which `plan-format.md` requires to be DAG order —
    never PR number, which doesn't exist yet when the monitor is armed.
 3. `draft-pr` and `blocked` nodes are **not in the queue at all** — a draft at the head is a
-   queue that never moves — and neither is a node the desk has.
+   queue that never moves.
 
 ### When the head is ready
 
@@ -265,7 +262,7 @@ git -C <repo> rev-list --count origin/<branch>..origin/<default>   # 0: nothing 
 ```
 
 **A head that is behind gets exactly one `SendMessage`** — to its own implementer: it is next
-in the owner's merge queue and the default branch moved; run `sync-main`. Nobody else hears
+for the owner to merge and the default branch moved; run `sync-main`. Nobody else hears
 anything. Its second `pr_opened` means the head is ready (§4).
 
 If that implementer is gone — a session died, or §2 picked the plan up fresh — spawn a new one
@@ -280,9 +277,9 @@ One `Monitor` per repo — never one per PR — armed with the longest `timeout_
 allows. **A monitor expires**: on each expiry notice, re-arm it with the same list. An expiry is
 not a queue event, and a queue nobody re-armed reads exactly like a quiet one. The loop is
 `${CLAUDE_PLUGIN_ROOT}/bin/ontherun-merge-monitor.sh`, armed with the repo's absolute path and this plan's
-still-eligible branches in that repo — **the owner's queue first, in queue order, then the
-branches the desk has**. Its rows are how you see any PR merge, close or go draft, whoever
-did it; its head line means something only while it names an owner's-queue branch:
+still-eligible branches in that repo, **in queue order**. Its rows are how you see any PR
+merge, close or go draft, whoever did it; its head line means something only in a repo with
+no merge queue:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/bin/ontherun-merge-monitor.sh /abs/path/acme-api \
@@ -320,8 +317,8 @@ work below and the second finds it done.
    `git -C <repo> merge-base --is-ancestor <sha> origin/<default>`; then record `merged`, the
    short `sha` and the `merged:` date. A PR gone draft is `draft-pr`. A `CLOSED` you didn't
    expect: stop and ask.
-2. **Recompute the owner's queue head**, and sync that one implementer if it's behind. If
-   the owner merged out of order, the head is whatever the order now says.
+2. **In a repo with no merge queue, recompute the head**, and sync that one implementer if
+   it's behind. If the owner merged out of order, the head is whatever the order now says.
 3. **Re-read the plan from disk** and launch the newly unblocked wave (§3). Your context is the
    thing most likely to have been compacted, and another session may have edited the plan.
 
@@ -337,8 +334,8 @@ acme-api — #114 merged; #116, #117 with the desk
 acme-api — yours next: #118 `feat(users)!: account deletion` — ready to merge (1 queued behind)
 ```
 
-The first form is a repo with nothing for the owner to do. The second appears while the
-owner's queue has a head; the state after the title is one of *ready to merge*, *syncing
+The first form is a repo the desk feeds. The second is a repo with no merge queue, while
+its queue has a head; the state after the title is one of *ready to merge*, *syncing
 with main*, *checks running*. Send a `PushNotification` (where available) **only on ready
 to merge**, one per repo, and **only once the node is `open` in the block** — checks can
 finish before the implementer's report arrives, and that report could still be `blocked`.
@@ -348,7 +345,7 @@ finish before the implementer's report arrives, and that report could still be `
   now true.
 - **Don't notify per PR opened or reported.**
 - **Do speak at once** when something stops that only the owner can restart: `blocked`,
-  `needs_input`, a PR gone draft, an owner's-queue head whose checks fail, and the desk's
+  `needs_input`, a PR gone draft, a head the owner is to merge whose checks fail, and the desk's
   `review_required`, `dequeued`, `refused` and third send-back.
 
 ## 6. Closing it out

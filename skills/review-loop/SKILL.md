@@ -195,9 +195,8 @@ round on a question a shell command answers for free.
 
    **Then hand the PR to the merge desk**: follow
    `${CLAUDE_PLUGIN_ROOT}/skills/land/SKILL.md` from its step 2 — report the PR now,
-   whether or not its checks have finished, and fix what the desk sends back. Three cases
+   whether or not its checks have finished, and fix what the desk sends back. Two cases
    leave the PR for the human to merge instead, and step 6 says which applied:
-   - the human said they want to look at it before it merges;
    - you are a conductor's implementer — the conductor reports your PR
      (`${CLAUDE_PLUGIN_ROOT}/reference/implementer-protocol.md`);
    - no desk is running: `${CLAUDE_PLUGIN_ROOT}/bin/ontherun-merge-desk.sh status` ends
