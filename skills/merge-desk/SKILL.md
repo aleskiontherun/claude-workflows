@@ -33,7 +33,9 @@ ${CLAUDE_PLUGIN_ROOT}/bin/ontherun-merge-desk.sh submit <pr-url> --from "<your s
 
 - **Report it when the work is finished**: open, not a draft, reviewed, and pushed. Its
   checks may still be running — waiting for them is the desk's job, and a PR that is
-  waiting delays no other.
+  waiting delays no other. Green means every check on the commit, whether or not GitHub
+  requires it; the script's header says how a commit with no checks yet is told from a
+  repo that runs none.
 - **`--from` is the name `ListAgents` gives your own session** ("This session is …"); the
   desk's messages go there. A subagent gives its parent session's name, because messages
   between sessions reach sessions. With no `--from`, the outcome goes to the desk's user.

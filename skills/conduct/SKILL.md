@@ -216,19 +216,23 @@ One message per report, from the desk's session, its first line starting `Merge 
 
 - **Merged** — *When something leaves the queue*, below, which confirms it in the tree.
 - **Sent back, for something the branch can fix** — `checks_failed`, `conflict`,
-  `head_moved`, `draft`, `timed_out`. `SendMessage` the reason and its detail, as they
+  `head_moved`, `timed_out`. `SendMessage` the reason and its detail, as they
   came, to that node's implementer; `implementer-protocol.md` says what it does with them.
   Its next `pr_opened` (§4) is reported again. An implementer that is gone is replaced as
-  *A repo with no merge queue* describes: a new one of the node's tier, on the adopt path,
+  *When the head is ready* describes: a new one of the node's tier, on the adopt path,
   given the desk's reason as its job.
-- **`review_required`, `dequeued`** — a person's move. Say it to the owner at once; the node
-  stays `open`.
+- **`draft`** — the node is `draft-pr`, as when the monitor shows it: stop and ask. Nobody
+  marks ready a PR that someone made a draft.
+- **`review_required`, `dequeued`, `removed`** — a person's move. Say it to the owner at
+  once, with the detail; the node stays `open`.
+- **`closed`, `not_found`** — a `CLOSED` you didn't expect: stop and ask.
 - **`refused`** — usually a repo with no merge queue; GitHub's message is the detail. When
   it is that, stop reporting that repo's PRs, write one sentence in the plan's Status prose
   saying the owner merges there, say so once, and its open PRs join the queue below. Any
   other refusal goes to the owner as it came.
 - **The same PR sent back a third time** — stop reporting it and bring it to the owner with
   the three reasons.
+- **A reason not listed here** goes to the owner as it came.
 
 ### A repo with no merge queue
 
@@ -345,8 +349,8 @@ finish before the implementer's report arrives, and that report could still be `
   now true.
 - **Don't notify per PR opened or reported.**
 - **Do speak at once** when something stops that only the owner can restart: `blocked`,
-  `needs_input`, a PR gone draft, a head the owner is to merge whose checks fail, and the desk's
-  `review_required`, `dequeued`, `refused` and third send-back.
+  `needs_input`, a PR gone draft, a head the owner is to merge whose checks fail, and whatever
+  *What the desk sends back* gives to the owner.
 
 ## 6. Closing it out
 
