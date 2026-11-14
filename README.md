@@ -23,7 +23,7 @@ Everything ships as one plugin, `ontherun`, so skills are `/ontherun:implement` 
 | Skill | Does | Use when |
 | --- | --- | --- |
 | `implement` | implements a task, then hands off to `review-loop` | "implement / add / fix X" — any PR-sized change |
-| `review-loop` | reviewer → validators → fix → repeat until clean, then opens or updates the PR and stops | a branch already has the changes |
+| `review-loop` | reviewer → validators → fix → repeat until clean, then opens or updates the PR and hands it to the merge desk, or stops where none is running | a branch already has the changes |
 | `sync-main` | merges the default branch into an in-flight branch — absorbing the squash of a PR the branch was built on — resolves conflicts, re-checks the branch against what arrived | a PR is stale or conflicting |
 | `land` | reports an open, reviewed PR to the merge desk without waiting for CI, then fixes on the branch whatever the desk sends back — failed checks, a conflict — and reports it again | a PR should get from "opened" to merged without you watching CI |
 | `plan` | researches a feature, asks you the product calls, writes a plan with a DAG of PR-sized nodes, runs the plan-review loop, presents it | a feature too big for one PR |
@@ -187,7 +187,7 @@ flowchart TD
     FB -->|"under 6 blocking rounds"| R
     FB -->|"6th blocking round"| U
     C4b{"clean verdict came<br/>on a narrow round?"} -->|yes| R
-    C4b -->|no| P["push · open or update PR · stop"]
+    C4b -->|no| P["push · open or update PR · report to the merge desk, or stop"]
     U["push · no PR (existing one → draft) · stop"]
 ```
 

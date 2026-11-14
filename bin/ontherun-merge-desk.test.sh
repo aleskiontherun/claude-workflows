@@ -316,11 +316,22 @@ assert_eq "wait: BLOCKED with no check registered is not green" \
   "waiting acme/api#31 for=checks" "$OUT"
 
 fresh
-pr acme/api 31 rollup=null; pr acme/api 32 mergeStateStatus=UNSTABLE rollup=FAILURE
+pr acme/api 31 rollup=null; pr acme/api 32 mergeStateStatus=UNSTABLE rollup=PENDING
+pr acme/api 33 mergeStateStatus=UNSTABLE rollup=FAILURE
 desk submit 'acme/api#31'; desk submit 'acme/api#32'
 desk run --once
-assert_eq "enqueue: CLEAN with no checks, and UNSTABLE, are GitHub saying yes" \
-  "PR_31 PR_32" "$(enqueues)"
+assert_has "wait: a fresh report with no check registered is waited on" \
+  "waiting acme/api#31 for=checks" "$OUT"
+assert_has "wait: a check GitHub does not require is waited for too" \
+  "waiting acme/api#32 for=checks" "$OUT"
+assert_eq "wait: neither is enqueued" "" "$(enqueues)"
+ONTHERUN_MERGE_DESK_SETTLE_SECONDS=0 desk run --once
+assert_eq "enqueue: CLEAN with no checks once the report has settled" "PR_31" "$(enqueues)"
+desk submit 'acme/api#33'
+assert_eq "submit: a red check GitHub does not require is refused" 1 "$RC"
+assert_has "submit: and the reason is its checks" "checks_failed" "$OUT"
+ONTHERUN_MERGE_DESK_SETTLE_SECONDS=soon desk status
+assert_eq "a settle time that is not a number is refused" 1 "$RC"
 
 fresh
 pr acme/api 31 mergeStateStatus=BLOCKED rollup=PENDING; pr acme/api 32

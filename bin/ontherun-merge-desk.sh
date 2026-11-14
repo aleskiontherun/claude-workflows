@@ -38,6 +38,12 @@
 #          sent back with its reason. A row stays until `told` names it.
 # told     Mark those outcomes as delivered to whoever reported the PR.
 #
+# Green is the roll-up of every check on the reported commit, required or not: one still
+# running is waited for, one that failed sends the PR back. A commit no check has
+# registered on yet is waited on for $ONTHERUN_MERGE_DESK_SETTLE_SECONDS after the report,
+# because a report can arrive seconds after the push; after that, a PR GitHub calls
+# mergeable with no checks at all is one from a repo that runs none.
+#
 # Each PR is judged on its own, so one whose checks are still running delays nothing but
 # itself, and PRs ready in the same pass are enqueued in report order. A waiting PR is one
 # of:
@@ -76,6 +82,8 @@
 #                                      ${XDG_STATE_HOME:-$HOME/.local/state}/ontherun/merge-desk
 #   ONTHERUN_MERGE_DESK_HOLD_MINUTES   how long the desk waits for one PR's checks before
 #                                      sending it back as timed_out; default 120
+#   ONTHERUN_MERGE_DESK_SETTLE_SECONDS how long after a report a commit with no check
+#                                      registered is still waited on; default 120
 #
 # Exit status: 0 done; 1 a submit that was refused, a GitHub call that failed, a second
 # `run`, a ledger that does not parse, an unknown <seq>; 64 on usage.
@@ -90,6 +98,7 @@ interval=${WF_MERGE_DESK_INTERVAL:-60}
 call_timeout=${WF_MERGE_DESK_TIMEOUT:-30}
 
 hold_minutes=${ONTHERUN_MERGE_DESK_HOLD_MINUTES:-120}
+settle_seconds=${ONTHERUN_MERGE_DESK_SETTLE_SECONDS:-120}
 dir=${ONTHERUN_MERGE_DESK_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/ontherun/merge-desk}
 ledger=$dir/ledger.jsonl
 
@@ -241,9 +250,11 @@ pr_fetch() { # owner/name number
 
 # What to do with a PR, as `action<TAB>reason<TAB>detail`.
 #
-# waiting: a reported PR not yet in GitHub's queue. Whether it can merge is GitHub's own
-# mergeStateStatus, never a roll-up of the checks that happen to have reported: a required
-# check that has not registered leaves the roll-up green and the status BLOCKED.
+# waiting: a reported PR not yet in GitHub's queue. Two things have to hold. The roll-up of
+# its checks is not red and not still running -- and not empty while the report is too
+# fresh for checks to have registered ($settled). And GitHub's own mergeStateStatus says it
+# can merge, which the roll-up alone never does: a required check that has not registered
+# leaves the roll-up green and the status BLOCKED.
 #
 # queued: a PR this ledger saw enter GitHub's queue. Out of the queue and still open, it
 # was removed -- but only a removal no older than the entry counts, because the timeline
@@ -261,10 +272,12 @@ VERDICTS='
       ["back", "conflict", "it conflicts with \(.baseRefName)"]
     elif .mergeable == "UNKNOWN" or .mergeStateStatus == "UNKNOWN" then
       ["hold", "mergeability", "GitHub has not worked out whether it can merge"]
-    elif (.mergeStateStatus | IN("CLEAN", "UNSTABLE", "HAS_HOOKS")) then ["enqueue", "-", "-"]
     elif (.rollup | IN("FAILURE", "ERROR")) then
       ["back", "checks_failed", "its checks failed on \(.headRefOid | short)"]
-    elif (.rollup | IN("PENDING", "EXPECTED", null)) then
+    elif (.rollup | IN("PENDING", "EXPECTED")) or (.rollup == null and ($settled | not)) then
+      ["hold", "checks", "its checks have not finished on \(.headRefOid | short)"]
+    elif (.mergeStateStatus | IN("CLEAN", "UNSTABLE", "HAS_HOOKS")) then ["enqueue", "-", "-"]
+    elif .rollup == null then
       ["hold", "checks", "its checks have not finished on \(.headRefOid | short)"]
     elif (.reviewDecision | IN("REVIEW_REQUIRED", "CHANGES_REQUESTED")) then
       ["back", "review_required", "GitHub wants a review first (\(.reviewDecision))"]
@@ -280,10 +293,15 @@ VERDICTS='
        "GitHub took it out of the merge queue (\(.removed_reason))"]
     else ["wait", "-", "-"] end;'
 
-verdict() { # jq-call -> sets V_ACTION V_REASON V_DETAIL from $PR
+verdict() { # jq-call sha-or-since [settled] -> sets V_ACTION V_REASON V_DETAIL from $PR
   local sha_or_since=$2
   IFS=$'\t' read -r V_ACTION V_REASON V_DETAIL < <(
-    jq -r --arg x "$sha_or_since" "$VERDICTS $1(\$x) | @tsv" <<<"$PR")
+    jq -r --arg x "$sha_or_since" --argjson settled "${3:-true}" \
+      "$VERDICTS $1(\$x) | @tsv" <<<"$PR")
+}
+
+settled() { # reported-at -> true once checks have had time to register on the commit
+  jq -n --arg at "$1" --argjson s "$settle_seconds" 'now - ($at | fromdateiso8601) >= $s'
 }
 
 # ------------------------------------------------------------------------- the pass
@@ -313,7 +331,7 @@ held_too_long() { # held-at -> 0 when past the limit
 }
 
 pass_repo() { # owner/name entries
-  local repo=$1 all=$2 seq number sha from held since ref rc
+  local repo=$1 all=$2 seq number sha from held since at ref rc
 
   # The PRs already in GitHub's queue: merged, taken out, or still there.
   while IFS=$'\t' read -r -u 3 seq number from since; do
@@ -338,7 +356,7 @@ pass_repo() { # owner/name entries
   # passed over until the next pass. `break` is for a pass that has stopped learning --
   # GitHub not answering, the ledger not taking a record -- and leaves the rest of the
   # repo's line for the next one.
-  while IFS=$'\t' read -r -u 3 seq number from sha held; do
+  while IFS=$'\t' read -r -u 3 seq number from sha held at; do
     [ -n "$seq" ] || continue
     ref="$repo#$number"
     pr_fetch "$repo" "$number"; rc=$?
@@ -349,7 +367,7 @@ pass_repo() { # owner/name entries
          continue ;;
       *) break ;;
     esac
-    verdict waiting "$sha"
+    verdict waiting "$sha" "$(settled "$at")"
     case $V_ACTION in
       merged) merged "$seq" "$ref" "$from" || break ;;
       back)   sent_back "$seq" "$ref" "$from" "$V_REASON" "$V_DETAIL" || break ;;
@@ -386,7 +404,7 @@ pass_repo() { # owner/name entries
       *) break ;;
     esac
   done 3< <(jq -r --arg r "$repo" '.[] | select(.repo == $r and .status == "waiting")
-      | [.seq, .pr, .from, .sha, (.held_at // "-")] | @tsv' <<<"$all")
+      | [.seq, .pr, .from, .sha, (.held_at // "-"), .at] | @tsv' <<<"$all")
 }
 
 # One unanswered pass is a flap and says nothing. The count lives in a file because each
@@ -570,5 +588,8 @@ esac
 mkdir -p "$dir" || die "cannot create $dir"
 case $hold_minutes in
   ''|*[!0-9]*) die "ONTHERUN_MERGE_DESK_HOLD_MINUTES must be a whole number of minutes" ;;
+esac
+case $settle_seconds in
+  ''|*[!0-9]*) die "ONTHERUN_MERGE_DESK_SETTLE_SECONDS must be a whole number of seconds" ;;
 esac
 "cmd_$cmd" "$@"
