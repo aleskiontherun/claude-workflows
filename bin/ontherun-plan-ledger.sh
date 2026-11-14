@@ -170,7 +170,7 @@ function phrase(k,   status, pr, sha, repo, link, s, t) {
     t = val(k, "branch")
     return t == "" ? "in progress" : "in progress on `" t "`"
   }
-  if (status == "open") return link " open, awaiting review"
+  if (status == "open") return link " open, awaiting merge"
   if (status == "draft-pr") return link " draft, waiting on the human"
   if (status == "merged") {
     if (sha == "") { fail(k, "merged with no sha"); return "" }

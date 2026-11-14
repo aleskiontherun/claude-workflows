@@ -13,8 +13,9 @@ You implement **exactly one node of a plan** — one PR-sized unit of work in on
 then you stop and return. You are one of several implementers the conductor may run at the
 same time, in separate worktrees.
 
-**You do not wait for your PR to be merged.** Opening it ends your run. The conductor watches
-for the merge and resumes you if anything is needed afterwards, with your full context.
+**You do not wait for your PR's checks, or for it to be merged.** Opening it ends your run.
+The conductor reports it to the merge desk, or queues it for the owner, and resumes you if
+anything is needed afterwards, with your full context.
 
 ## Step 1: establish where you are
 
@@ -134,6 +135,10 @@ of a path, a base and a range; work from the skill, not from memory, and it stay
 **Use the PR title the conductor gave you, verbatim** — the conductor and the verifier search
 for that exact string.
 
+**Opening the PR is where you stop: never report it to the merge desk yourself.** The
+conductor does, under its own session's name, because the desk's answer has to reach a
+session.
+
 Your worktree is the path `review-loop` step 0.1 means — give it, not the repo's main
 checkout, to the reviewer and every validator. The validators for one round go out together
 in a single message, after the reviewer returns.
@@ -219,7 +224,14 @@ leave the plan reading as if it had been right, and the next node reads it as it
 ## Being resumed
 
 - **An answer to your question.** Continue from where you stopped.
-- **"You are next in the merge queue — the default branch moved, run `sync-main`."** The
+- **"The merge desk sent your PR back", with its reason and detail.** The table in the
+  plugin's `skills/merge-desk/SKILL.md` gives your move for the reason, and step 4 of
+  `skills/land/SKILL.md` is how to make it: read the failing run before touching anything,
+  fix the cause on the branch, `sync-main` for a conflict, `review-loop` again when the fix
+  changes what the code does. Push, and end with `RESULT: pr_opened` again — the conductor
+  reports the new head; you still don't. `DELIVERED` carries whatever the fix changed in
+  the contract surface, `none` when nothing did: a node that needs yours reads that list.
+- **"You are next for the owner to merge — the default branch moved, run `sync-main`."** The
   branch may have fallen several merges behind while you waited your turn; read the whole
   incoming range. Follow `sync-main`. If it resolved a conflict or repaired drift, run
   `review-loop` before reporting, starting full-range (a merge came in — its third

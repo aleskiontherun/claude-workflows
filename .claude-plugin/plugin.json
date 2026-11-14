@@ -1,8 +1,8 @@
 {
   "name": "ontherun",
   "displayName": "ontherun",
-  "version": "0.1.0",
-  "description": "Implement, review, plan and conduct work with Claude Code, where the party that did the work never judges it: clean-context reviewers, a validator per finding, plans as a DAG of PR-sized nodes conducted wave by wave with a merge queue per repo.",
+  "version": "0.2.0",
+  "description": "Implement, review, plan and conduct work with Claude Code, where the party that did the work never judges it: clean-context reviewers, a validator per finding, plans as a DAG of PR-sized nodes conducted wave by wave and merged through a merge desk that feeds GitHub's merge queue.",
   "author": {
     "name": "Aleksei Vesnin",
     "url": "https://github.com/aleskiontherun"

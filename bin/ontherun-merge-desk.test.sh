@@ -209,11 +209,11 @@ pr acme/api 11; pr acme/api 12
 desk submit 'acme/api#11' --from "Plan A"
 assert_eq  "submit: taken" 0 "$RC"
 assert_has "submit: says where it stands" \
-  "reported acme/api#11 at aaaaaaa as 1; 0 waiting ahead of it in acme/api" "$OUT"
+  "reported acme/api#11 at aaaaaaa as 1; 0 more waiting in acme/api" "$OUT"
 assert_has "submit: says nothing is running" "no merge desk is running" "$OUT"
 desk submit https://github.com/acme/api/pull/12 --from "Plan B"
 assert_has "submit: a URL names the same thing" \
-  "reported acme/api#12 at aaaaaaa as 2; 1 waiting ahead of it in acme/api" "$OUT"
+  "reported acme/api#12 at aaaaaaa as 2; 1 more waiting in acme/api" "$OUT"
 desk submit 'acme/api#11' --from "Plan A"
 assert_eq  "submit: the same PR at the same commit is not added twice" \
   "acme/api#11 is already in the line as 1 (waiting)" "$OUT"
@@ -223,7 +223,7 @@ assert_eq  "submit: enqueues nothing itself" "" "$(enqueues)"
 pr acme/api 11 headRefOid=bbbbbbb11
 desk submit 'acme/api#11' --from "Plan A"
 assert_has "submit: the same PR at a new commit joins the back" \
-  "reported acme/api#11 at bbbbbbb as 3; 1 waiting ahead of it in acme/api" "$OUT"
+  "reported acme/api#11 at bbbbbbb as 3; 1 more waiting in acme/api" "$OUT"
 desk outbox
 assert_eq  "submit: the superseded report owes nobody a message" "" "$OUT"
 desk status
@@ -278,51 +278,71 @@ desk run --once
 assert_eq "order: a PR in the queue is not enqueued again" "PR_22 PR_21 PR_23" "$(enqueues)"
 assert_eq "order: and a quiet queue prints nothing" "" "$OUT"
 
-# ------------------------------------------------------------------- holding the line
+# ------------------------------------------------------------- waiting on its checks
 fresh
 pr acme/api 31 mergeStateStatus=BLOCKED rollup=PENDING; pr acme/api 32
 desk submit 'acme/api#31'; desk submit 'acme/api#32'
 desk run --once
-assert_eq "hold: pending checks hold the line" "holding acme/api#31 for=checks" "$OUT"
-assert_eq "hold: nothing behind it is enqueued" "" "$(enqueues)"
+assert_has "wait: pending checks are waited for" "waiting acme/api#31 for=checks" "$OUT"
+assert_eq "wait: the PR behind it is enqueued all the same" "PR_32" "$(enqueues)"
 desk run --once
-assert_eq "hold: said once" "" "$OUT"
+assert_eq "wait: said once" "" "$OUT"
 desk status
-assert_has "hold: status shows it" "1  acme/api#31  held since " "$OUT"
+assert_has "wait: status shows it" "1  acme/api#31  waiting on GitHub since " "$OUT"
 pr acme/api 31
 desk run --once
-assert_eq "hold: released in order" "PR_31 PR_32" "$(enqueues)"
+assert_eq "wait: enqueued once its checks are green" "PR_32 PR_31" "$(enqueues)"
+
+fresh
+pr acme/api 31 mergeStateStatus=BLOCKED rollup=PENDING
+desk submit 'acme/api#31' --from "Plan A"
+desk run --once
+pr acme/api 31 mergeStateStatus=BLOCKED rollup=FAILURE
+desk run --once
+assert_has "wait: checks that finish red send it back" \
+  'sent-back acme/api#31 reason=checks_failed tell="Plan A"' "$OUT"
 
 fresh
 pr acme/api 31 mergeable=UNKNOWN mergeStateStatus=UNKNOWN; pr acme/api 32
 desk submit 'acme/api#31'; desk submit 'acme/api#32'
 desk run --once
-assert_eq "hold: unknown mergeability holds too" "holding acme/api#31 for=mergeability" "$OUT"
+assert_has "wait: unknown mergeability is waited for too" "waiting acme/api#31 for=mergeability" "$OUT"
 
 fresh
 pr acme/api 31 mergeStateStatus=BLOCKED rollup=null
 desk submit 'acme/api#31'
 desk run --once
-assert_eq "hold: BLOCKED with no check registered is not green" \
-  "holding acme/api#31 for=checks" "$OUT"
+assert_eq "wait: BLOCKED with no check registered is not green" \
+  "waiting acme/api#31 for=checks" "$OUT"
 
 fresh
-pr acme/api 31 rollup=null; pr acme/api 32 mergeStateStatus=UNSTABLE rollup=FAILURE
+pr acme/api 31 rollup=null; pr acme/api 32 mergeStateStatus=UNSTABLE rollup=PENDING
+pr acme/api 33 mergeStateStatus=UNSTABLE rollup=FAILURE
 desk submit 'acme/api#31'; desk submit 'acme/api#32'
 desk run --once
-assert_eq "enqueue: CLEAN with no checks, and UNSTABLE, are GitHub saying yes" \
-  "PR_31 PR_32" "$(enqueues)"
+assert_has "wait: a fresh report with no check registered is waited on" \
+  "waiting acme/api#31 for=checks" "$OUT"
+assert_has "wait: a check GitHub does not require is waited for too" \
+  "waiting acme/api#32 for=checks" "$OUT"
+assert_eq "wait: neither is enqueued" "" "$(enqueues)"
+ONTHERUN_MERGE_DESK_SETTLE_SECONDS=0 desk run --once
+assert_eq "enqueue: CLEAN with no checks once the report has settled" "PR_31" "$(enqueues)"
+desk submit 'acme/api#33'
+assert_eq "submit: a red check GitHub does not require is refused" 1 "$RC"
+assert_has "submit: and the reason is its checks" "checks_failed" "$OUT"
+ONTHERUN_MERGE_DESK_SETTLE_SECONDS=soon desk status
+assert_eq "a settle time that is not a number is refused" 1 "$RC"
 
 fresh
 pr acme/api 31 mergeStateStatus=BLOCKED rollup=PENDING; pr acme/api 32
 desk submit 'acme/api#31' --from "Plan A"; desk submit 'acme/api#32'
 desk run --once
 ONTHERUN_MERGE_DESK_HOLD_MINUTES=0 desk run --once
-assert_has "hold: past the limit it is sent back" \
+assert_has "wait: past the limit it is sent back" \
   'sent-back acme/api#31 reason=timed_out tell="Plan A"' "$OUT"
-assert_eq  "hold: and the line moves in the same pass" "PR_32" "$(enqueues)"
+assert_eq  "wait: and it is not enqueued" "PR_32" "$(enqueues)"
 desk outbox
-assert_has "hold: the detail says what it waited for" \
+assert_has "wait: the detail says what it waited for" \
   "timed_out: its checks have not finished on aaaaaaa after 0 minutes" "$OUT"
 
 # ---------------------------------------------------- sent back from the waiting line
@@ -540,7 +560,7 @@ assert_has   "told: the other stays" "acme/api#82" "$OUT"
 pr acme/api 82
 desk submit 'acme/api#82' --from "Plan B"
 assert_has "resubmit: a PR that was sent back joins the back under a new seq" \
-  "reported acme/api#82 at aaaaaaa as 3; 0 waiting ahead" "$OUT"
+  "reported acme/api#82 at aaaaaaa as 3; 0 more waiting" "$OUT"
 desk status
 assert_has "status: a waiting PR"             "3  acme/api#82  waiting  from: Plan B" "$OUT"
 assert_has "status: an outcome nobody was told" "2  acme/api#82  sent back: conflict  from: -" "$OUT"

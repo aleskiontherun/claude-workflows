@@ -1,6 +1,6 @@
 ---
 name: review-loop
-description: Iterate a branch's already-implemented changes against an independent reviewer subagent -- every flagged issue independently checked by a validator before you act on it -- until they're clean, then open or update the PR and stop for the human's review and merge. Use whenever the user asks to review a branch, get feedback before opening a PR, iterate against review, or get changes ready for a PR, whether Claude or the human wrote them. Also entered by implement once it finishes implementing.
+description: Iterate a branch's already-implemented changes against an independent reviewer subagent -- every flagged issue independently checked by a validator before you act on it -- until they're clean, then open or update the PR and hand it to the merge desk where one is running, or stop for the human's review and merge. Use whenever the user asks to review a branch, get feedback before opening a PR, iterate against review, or get changes ready for a PR, whether Claude or the human wrote them. Also entered by implement once it finishes implementing.
 ---
 
 # Review loop
@@ -193,6 +193,15 @@ round on a question a shell command answers for free.
    - **PR exists**: `gh pr edit --body …` so the body describes the change as it now
      stands, as if just written. No review-fixes section, no comment on the PR.
 
+   **Then hand the PR to the merge desk**: follow
+   `${CLAUDE_PLUGIN_ROOT}/skills/land/SKILL.md` from its step 2 — report the PR now,
+   whether or not its checks have finished, and fix what the desk sends back. Two cases
+   leave the PR for the human to merge instead, and step 6 says which applied:
+   - you are a conductor's implementer — the conductor reports your PR
+     (`${CLAUDE_PLUGIN_ROOT}/reference/implementer-protocol.md`);
+   - no desk is running: `${CLAUDE_PLUGIN_ROOT}/bin/ontherun-merge-desk.sh status` ends
+     with whether one is.
+
    The body is a paragraph on what changed and why plus one line on how it was verified,
    unless the repo's docs ask for more. **Keep plan paths out of the title and body**
    (`workspace.md`) — the reviewer never sees the body, so nobody else will catch it.
@@ -217,7 +226,8 @@ round on a question a shell command answers for free.
    the reviewer inherits the session model, so `approved` from a cheap session is a weaker
    claim than the same word from an expensive one.
 
-   Do not merge. Do not start on anything else unasked.
+   Say where the PR stands: with the merge desk, or waiting for the human to merge and
+   why. Do not merge. Do not start on anything else unasked.
 
 ## Setup
 
@@ -259,6 +269,6 @@ names the tier instead. If you pin either agent, use a family alias (`opus`, `so
 ## What this skill is not for
 
 - Implementing the work — that's `implement`, or doing what the human asked directly.
-- Merging — always the human, on their own schedule.
+- Merging — GitHub's merge queue by way of the merge desk, or the human; never this skill.
 - Reviewing uncommitted changes — see step 0.2.
 - Spanning two repos in one run — see step 0.1.

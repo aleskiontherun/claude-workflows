@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Implement a task, feature or fix in the current project, then hand off to the review-loop skill to get it independently reviewed and readied as a PR for the human's final review and merge. Use whenever the user asks to implement, build, add or fix something that should go through a real implement-review-fix loop -- any PR-sized coding task, not just a step of a larger plan. Do NOT use it to put a trivial one-line fix through review.
+description: Implement a task, feature or fix in the current project, then hand off to the review-loop skill to get it independently reviewed and readied as a PR that goes to the merge desk, or waits for the human's final review and merge. Use whenever the user asks to implement, build, add or fix something that should go through a real implement-review-fix loop -- any PR-sized coding task, not just a step of a larger plan. Do NOT use it to put a trivial one-line fix through review.
 ---
 
 # Implement, then review
@@ -38,7 +38,7 @@ summary is a copy nothing keeps in step.
 
 4. **Follow `review-loop` for everything after that**: its pre-review gate, invoking the
    reviewer, validating and fixing what it flags, capping the loop, opening the PR, and
-   stopping for the human. Invoke the skill rather than working from memory of it, and use
+   handing it to the merge desk or stopping for the human. Invoke the skill rather than working from memory of it, and use
    it as written — including its rule that the reviewer is told nothing about the change.
    You wrote this code; you are exactly the party that shouldn't frame its review.
 

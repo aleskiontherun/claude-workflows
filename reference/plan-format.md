@@ -67,7 +67,7 @@ this?" for a live plan and "what shipped?" for a done one at a glance.
 A live plan has the same shape with each node's actual state:
 
 ````markdown
-- **api-1** `chore: scope commit signing` — [#111](https://github.com/acme/acme-api/pull/111) open, awaiting review
+- **api-1** `chore: scope commit signing` — [#111](https://github.com/acme/acme-api/pull/111) open, awaiting merge
 - **web-1** `chore: scope commit signing` — in progress on `claude/web-1-signing`
 - **web-2** `docs: contributor guide` — not started, needs `web-1`
 ````
@@ -184,8 +184,9 @@ verifier's proposal **carries over the `delivered` entries the plan already reco
 silent proposal is not an empty field.
 
 **List `nodes` in DAG order** — every node after the ones its `needs` name, and in the same
-order as the ledger. The conductor's merge queue breaks ties on this order, because its
-monitor is armed before any of the wave's PRs exist, so a PR number can't be the tiebreak.
+order as the ledger. Where the conductor queues PRs for the owner to merge (`conduct` §5),
+the queue breaks ties on this order, because its monitor is armed before any of the wave's
+PRs exist, so a PR number can't be the tiebreak.
 
 **Which repos can host a node** — `workspace.md`, *Rules that follow*. A node takes its
 conventions from its repo (`project-docs.md`), and runs whatever that repo names as its check
@@ -229,7 +230,7 @@ once which node is waiting and on what, and doesn't nag.
 | --- | --- | --- |
 | `pending` | Not started | Launch when every `needs` id is satisfied — `merged`, `done` or `dropped` |
 | `running` | An implementer is working on it | Nothing — wait for it to return |
-| `open` | PR opened, awaiting review | Nothing — it waits its turn in that repo's merge queue |
+| `open` | PR opened and reviewed, not yet merged | Reports it to the merge desk and relays what comes back; in a repo with no merge queue, it waits its turn for the owner to merge |
 | `draft-pr` | PR exists but is marked draft | **Stop and ask** — a draft never fires a merge |
 | `merged` | On the default branch, verified against the tree | Unblocks its dependents |
 | `done` | A `setup`/`manual` node's `check:` passed | Unblocks its dependents; never used for a `pr` node |
