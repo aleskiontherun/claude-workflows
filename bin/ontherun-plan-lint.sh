@@ -117,7 +117,7 @@ lines.pop if lines.last == ""
 CHECKS = %w[state-block indent state-parse ids-unique needs-exist dag-order kind status
             ledger counts round draft self-count].freeze
 STATUSES = %w[pending done running open draft-pr merged blocked dropped].freeze
-FIELDS = %w[id kind repo title needs agent status branch pr sha merged merge base reason delivered check].freeze
+FIELDS = %w[id kind repo title needs agent status branch pr sha merged base reason delivered check].freeze
 
 failures = []
 add = ->(check, msg) { failures << [check, msg] }

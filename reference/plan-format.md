@@ -165,7 +165,6 @@ In the single-repo layout every node has `repo: .` and `repos: [.]`.
 | `branch`, `pr`, `sha` | Filled in as they become known. `sha` is the squash commit on the default branch. |
 | `merged` | `YYYY-MM-DD` the PR merged, written with `sha`; the ledger prints it. |
 | `base` | The id of the same-repo node whose unmerged branch this node's branch was cut from. Written by the conductor at launch, removed when the implementer reports `STACKED_ON: none`. While it is there, the node's PR is not reported to the merge desk. |
-| `merge` | `owner` — the node's PR waits for the owner to merge it. Omitted, the conductor reports the PR to the merge desk as soon as it is opened (`conduct` §5). Written by the conductor at the wave plan, or by the plan's author where the owner already said. |
 | `reason` | Why a `blocked` node is blocked, one line — what it waits on; the ruling itself lives in the prose. |
 | `delivered` | The contract surface the node actually built, from its implementer's own report — a few `path:line — what` bullets. Filled in with `pr`. |
 | `kind`, `check` | Non-PR nodes; see *Node kinds*. |
@@ -186,9 +185,9 @@ verifier's proposal **carries over the `delivered` entries the plan already reco
 silent proposal is not an empty field.
 
 **List `nodes` in DAG order** — every node after the ones its `needs` name, and in the same
-order as the ledger. The conductor's queue of `merge: owner` PRs breaks ties on this order,
-because its monitor is armed before any of the wave's PRs exist, so a PR number can't be the
-tiebreak.
+order as the ledger. Where the conductor queues PRs for the owner to merge (`conduct` §5),
+the queue breaks ties on this order, because its monitor is armed before any of the wave's
+PRs exist, so a PR number can't be the tiebreak.
 
 **Which repos can host a node** — `workspace.md`, *Rules that follow*. A node takes its
 conventions from its repo (`project-docs.md`), and runs whatever that repo names as its check
@@ -232,7 +231,7 @@ once which node is waiting and on what, and doesn't nag.
 | --- | --- | --- |
 | `pending` | Not started | Launch when every `needs` id is satisfied — `merged`, `done` or `dropped` — or open to build on (`conduct` §3) |
 | `running` | An implementer is working on it | Nothing — wait for it to return |
-| `open` | PR opened and reviewed, not yet merged | Reports it to the merge desk once every `needs` id is satisfied, and relays what comes back — or, for `merge: owner`, lets it wait its turn in that repo's owner's queue. Its dependents may launch on it |
+| `open` | PR opened and reviewed, not yet merged | Reports it to the merge desk once every `needs` id is satisfied, and relays what comes back; in a repo with no merge queue, it waits its turn for the owner to merge. Its dependents may launch on it |
 | `draft-pr` | PR exists but is marked draft | **Stop and ask** — a draft never fires a merge |
 | `merged` | On the default branch, verified against the tree | Unblocks its dependents |
 | `done` | A `setup`/`manual` node's `check:` passed | Unblocks its dependents; never used for a `pr` node |

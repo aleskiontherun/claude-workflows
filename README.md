@@ -193,8 +193,7 @@ flowchart TD
 
 Rounds alternate between the whole branch (`<base>...HEAD`) and just the latest fixes
 (`<sha>..HEAD`), and the loop only exits clean on a whole-branch verdict. It never merges:
-with a merge desk running it reports the PR there, unless you said you want to look first,
-and otherwise leaves it for you. It ends by naming the exit (`approved at <sha>`) and
+with a merge desk running it reports the PR there, and otherwise leaves it for you. It ends by naming the exit (`approved at <sha>`) and
 relaying what the reviewer checked.
 
 Already have a branch? `/ontherun:review-loop`. Main moved under it? `/ontherun:sync-main`, which hands
@@ -265,12 +264,10 @@ acme-api — #114 merged; #116, #117 with the desk; #119 built on #116
 
 A PR built on another is held back from the desk until that one merges, then absorbs the
 merge and is reported. If a late fix changes what the earlier PR delivers, the conductor
-forwards the change to whatever was built on it; say "wait for merges" at the wave plan to
-launch only on merged work instead.
+forwards the change to whatever was built on it.
 
-A node marked `merge: owner` in the plan's `## State` block waits for you instead — the
-conductor marks the ones you ask to see first, and those it gives `implementer-high` — in a
-queue whose head is the one PR per repo you are asked to merge next:
+In a repo with no merge queue the desk has nothing to feed, and the conductor falls back to
+one PR per repo for you to merge next:
 
 ```
 acme-api — yours next: #118 `feat(users)!: account deletion` — ready to merge (1 queued behind)

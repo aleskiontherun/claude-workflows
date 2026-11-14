@@ -160,7 +160,7 @@ for that exact string.
 
 **Opening the PR is where you stop: never report it to the merge desk yourself.** The
 conductor does, under its own session's name, because the desk's answer has to reach a
-session and the conductor knows which PRs the owner wants to see first.
+session.
 
 Your worktree is the path `review-loop` step 0.1 means — give it, not the repo's main
 checkout, to the reviewer and every validator. The validators for one round go out together
@@ -268,7 +268,7 @@ this says `none`.
   you build on moved its contract surface. In your own repo, merge `origin/<base branch>`
   into your branch first; then adapt your work to the lines you were sent, and re-review
   through `review-loop`. If your PR was already open, end with `RESULT: pr_opened` again.
-- **"You are next in the owner's merge queue — the default branch moved, run `sync-main`."** The
+- **"You are next for the owner to merge — the default branch moved, run `sync-main`."** The
   branch may have fallen several merges behind while you waited your turn; read the whole
   incoming range. Follow `sync-main`. If it resolved a conflict or repaired drift, run
   `review-loop` before reporting, starting full-range (a merge came in — its third
