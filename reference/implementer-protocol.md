@@ -86,7 +86,8 @@ it" and end in a duplicate PR.
   PR.
 - **No rows, from a call that succeeded** — a previous implementer of this node died before it
   pushed. Build it on the adopted branch, reading what is already there first
-  (`git -C <worktree> log --oneline origin/<default>..HEAD`) as a partial attempt to check,
+  (`git -C <worktree> log --oneline origin/<default>..HEAD`, or from `origin/<base branch>`
+  when you were given one) as a partial attempt to check,
   not trust.
 
 **`--no-track` is not optional.** Without it the branch tracks the default branch, and a bare
@@ -234,7 +235,8 @@ report `RESULT: blocked`, with the unresolved findings in full in the prose summ
 
 **`DELIVERED` is the contract surface you created or changed** — the only thing the conductor
 can hand to the next node. Derive it from `git -C <worktree> diff origin/<default>...HEAD`, not
-from memory of what you set out to do. A handful of `path:line — what` bullets: routes, models,
+from memory of what you set out to do — or from `origin/<base branch>...HEAD` while your
+branch still carries an unmerged base, whose surface is its own node's to report. A handful of `path:line — what` bullets: routes, models,
 migrations, exported components, settings keys. Not a changelog.
 
 **`DIVERGED` is where the plan was wrong**, and `none` is the ordinary answer. Otherwise name

@@ -161,8 +161,11 @@ answers back to that agent. It keeps its context; don't re-explain the task.
 
 **`RESULT: pr_opened`** — record `branch` and `pr`, set the node `open`, regenerate the ledger,
 commit. Copy its `DELIVERED` bullets into the node's `delivered:` and nowhere else — the ledger
-stays one line per node. A report with `STACKED_ON: none` removes the node's `base:`. Then
-§5: reported to the merge desk once every `needs` id is satisfied.
+stays one line per node. A report with `STACKED_ON: none` removes the node's `base:`. **One
+that names a PR which has merged by the time it arrives** — the base landed while the
+implementer was finishing — gets §5's "your base merged" at once, and is not reported as
+it stands: its branch still carries the base's commits. Then §5: reported to the merge
+desk once every `needs` id is satisfied and the node has no `base:`.
 
 **A non-empty `DIVERGED` is a plan finding, due before the next wave launches.** The
 implementer worked around a wrong sentence, which is exactly why this is easy to file and
@@ -193,6 +196,17 @@ whatever is decided.
 
 **Don't notify here**; §5 owns notification.
 
+**A message to an implementer that is gone goes to a replacement.** Every `SendMessage` to
+a node's implementer in this skill — a correction, what the desk sent back, "your base
+merged", "what you built on changed", a head's sync — assumes it still holds its context.
+When it doesn't — a session died, or §2 picked the plan up fresh — spawn a new one of the
+node's tier. Give it the branch the block records and the absolute worktree path that
+branch's slug gives, and say plainly that the branch exists and whether its PR is open, so
+it takes the protocol's **adopt** path. Its job is the message and nothing else, so the
+prompt carries everything the message would: for "your base merged", the base's PR number,
+branch and squash commit; for "what you built on changed", the base's branch and its new
+`DELIVERED` lines.
+
 **A second `pr_opened` from an implementer you resumed is not a new PR.** The node is already
 `open` with that number; the head absorbed the default branch or its base's merge, or a fix
 landed. A desk node is reported again at the new head; in a repo with no merge queue its
@@ -218,8 +232,8 @@ owner merges, from the queue further down. One monitor per repo watches either.
 
 ### Reporting to the desk
 
-On a `pr_opened`, **once every one of the node's `needs` is satisfied** — a node built on
-an unmerged PR is held until then, however early it finished:
+On a `pr_opened`, **once every one of the node's `needs` is satisfied and it has no
+`base:`** — a node built on an unmerged PR is held until then, however early it finished:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/bin/ontherun-merge-desk.sh submit <pr-url> --from "<your session's name>" --sha <head oid>
@@ -250,9 +264,8 @@ One message per report, from the desk's session, its first line starting `Merge 
 - **Sent back, for something the branch can fix** — `checks_failed`, `conflict`,
   `head_moved`, `timed_out`. `SendMessage` the reason and its detail, as they
   came, to that node's implementer; `implementer-protocol.md` says what it does with them.
-  Its next `pr_opened` (§4) is reported again. An implementer that is gone is replaced as
-  *When the head is ready* describes: a new one of the node's tier, on the adopt path,
-  given the desk's reason as its job.
+  Its next `pr_opened` (§4) is reported again. An implementer that is gone is replaced
+  (§4), with the desk's reason as its job.
 - **`draft`** — the node is `draft-pr`, as when the monitor shows it: stop and ask. Nobody
   marks ready a PR that someone made a draft.
 - **`review_required`, `dequeued`, `removed`** — a person's move. Say it to the owner at
@@ -301,11 +314,8 @@ git -C <repo> rev-list --count origin/<branch>..origin/<default>   # 0: nothing 
 for the owner to merge and the default branch moved; run `sync-main`. Nobody else hears
 anything. Its second `pr_opened` means the head is ready (§4).
 
-If that implementer is gone — a session died, or §2 picked the plan up fresh — spawn a new one
-of the node's tier rather than syncing yourself. Give it the branch the block records and the
-absolute worktree path that branch's slug gives, and say plainly that the branch exists and its
-PR is open, so it takes the protocol's **adopt** path. Its job is the sync — with the review
-round the protocol says a sync can owe — and nothing else.
+If that implementer is gone, replace it (§4) rather than syncing yourself. Its job is the
+sync — with the review round the protocol says a sync can owe — and nothing else.
 
 ### Watching: one monitor per repo
 
