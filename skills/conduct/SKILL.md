@@ -227,9 +227,10 @@ of these three results is treated as `blocked`.
 
 ## 5. Getting PRs merged
 
-**Every open PR goes to the merge desk**: you report it the moment its implementer returns,
-the desk waits for its checks and feeds GitHub's merge queue, and nothing waits on a person.
-The one exception is a repo with no merge queue, where the desk has nothing to feed and the
+**Every open PR goes to the merge desk**: you report it the moment its implementer returns
+— or, for one built on an unmerged PR, the moment what it needs has merged and it has
+absorbed its base — the desk waits for its checks and feeds GitHub's merge queue, and
+nothing waits on a person. The one exception is a repo with no merge queue, where the desk has nothing to feed and the
 owner merges, from the queue further down. One monitor per repo watches either.
 
 ### Reporting to the desk

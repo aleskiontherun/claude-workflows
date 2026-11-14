@@ -96,7 +96,7 @@ lists only this branch's own work.
 
 Skip all of this when the PR landed as a merge commit — `git -C $REPO merge-base
 --is-ancestor <its head> $MAIN` succeeds — because the ancestry is real and the plain merge
-below works. Conflicts in the first, second and last merge are ordinary ones, resolved as
+at the top of this step works. Conflicts in the first, second and last merge are ordinary ones, resolved as
 follows.
 
 Conflict classes where the obvious resolution is wrong:
