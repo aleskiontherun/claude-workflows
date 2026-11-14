@@ -203,9 +203,11 @@ When it doesn't — a session died, or §2 picked the plan up fresh — spawn a 
 node's tier. Give it the branch the block records and the absolute worktree path that
 branch's slug gives, and say plainly that the branch exists and whether its PR is open, so
 it takes the protocol's **adopt** path. Its job is the message and nothing else, so the
-prompt carries everything the message would: for "your base merged", the base's PR number,
-branch and squash commit; for "what you built on changed", the base's branch and its new
-`DELIVERED` lines.
+prompt carries everything the message would: for "your base merged", the base's squash
+commit; for "what you built on changed", the base's new `DELIVERED` lines. **Whatever the
+message, a replacement on a node that has `base:` is given the base's PR number and
+branch**, as at launch (§3): without them it reviews and reports against the default
+branch, and answers `STACKED_ON: none` for a branch that still carries the base.
 
 **A second `pr_opened` from an implementer you resumed is not a new PR.** The node is already
 `open` with that number; the head absorbed the default branch or its base's merge, or a fix

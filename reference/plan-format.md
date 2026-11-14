@@ -231,7 +231,7 @@ once which node is waiting and on what, and doesn't nag.
 | --- | --- | --- |
 | `pending` | Not started | Launch when every `needs` id is satisfied — `merged`, `done` or `dropped` — or open to build on (`conduct` §3) |
 | `running` | An implementer is working on it | Nothing — wait for it to return |
-| `open` | PR opened and reviewed, not yet merged | Reports it to the merge desk once every `needs` id is satisfied, and relays what comes back; in a repo with no merge queue, it waits its turn for the owner to merge. Its dependents may launch on it |
+| `open` | PR opened and reviewed, not yet merged | Reports it to the merge desk once every `needs` id is satisfied and it has no `base`, and relays what comes back; in a repo with no merge queue, it waits its turn for the owner to merge. Its dependents may launch on it |
 | `draft-pr` | PR exists but is marked draft | **Stop and ask** — a draft never fires a merge |
 | `merged` | On the default branch, verified against the tree | Unblocks its dependents |
 | `done` | A `setup`/`manual` node's `check:` passed | Unblocks its dependents; never used for a `pr` node |
