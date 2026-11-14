@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Write a feature plan and get it attacked -- researching it, putting the product calls to the owner, splitting the work into PR-sized nodes with a `## State` DAG, and running clean-context plan-reviewer rounds until one exits clean -- then present it and stop. Also deepens a DRAFT plan into a detailed one, and re-attacks a plan on request. Use when the user wants a feature planned, a plan written, a draft deepened, or a plan reviewed. Conducting an approved plan -- launching implementers, the merge queue, closing out -- is conduct.
+description: Write a feature plan and get it attacked -- researching it, putting the product calls to the owner, splitting the work into PR-sized nodes with a `## State` DAG, and running clean-context plan-reviewer rounds until one exits clean -- then present it and stop. Also deepens a DRAFT plan into a detailed one, and re-attacks a plan on request. Use when the user wants a feature planned, a plan written, a draft deepened, or a plan reviewed. Conducting an approved plan -- launching implementers, getting their PRs merged, closing out -- is conduct.
 argument-hint: "[plan path, or a feature to plan]"
 effort: xhigh
 ---
@@ -161,7 +161,7 @@ Show it and stop.
 ## Things that are not this skill's job
 
 - **Conducting the plan you just wrote.** `conduct` verifies what landed, launches
-  implementers wave by wave, runs each repo's merge queue and closes the plan out. Hand over
+  implementers wave by wave, gets their PRs merged and closes the plan out. Hand over
   rather than carrying on: the two halves want different effort tiers, and the session that
   just wrote a plan is the worst-placed to start acting on it.
 - **Implementing anything.** Out-of-scope work you notice goes to the human as a suggestion,

@@ -25,12 +25,12 @@ Everything ships as one plugin, `ontherun`, so skills are `/ontherun:implement` 
 | `implement` | implements a task, then hands off to `review-loop` | "implement / add / fix X" — any PR-sized change |
 | `review-loop` | reviewer → validators → fix → repeat until clean, then opens or updates the PR and stops | a branch already has the changes |
 | `sync-main` | merges the default branch into an in-flight branch, resolves conflicts, re-checks the branch against what arrived | a PR is stale or conflicting |
-| `land` | watches an open, reviewed PR's CI, fixes what fails on the branch, reports the PR to the merge desk once it is green, and fixes and re-reports what the desk sends back | a PR should get from "opened" to merged without you watching CI |
+| `land` | reports an open, reviewed PR to the merge desk without waiting for CI, then fixes on the branch whatever the desk sends back — failed checks, a conflict — and reports it again | a PR should get from "opened" to merged without you watching CI |
 | `plan` | researches a feature, asks you the product calls, writes a plan with a DAG of PR-sized nodes, runs the plan-review loop, presents it | a feature too big for one PR |
-| `conduct` | verifies what landed, launches implementer subagents wave by wave, runs a merge queue per repo, closes the plan out | an approved plan should be built |
+| `conduct` | verifies what landed, launches implementer subagents wave by wave, reports each PR to the merge desk or queues it for you to merge, closes the plan out | an approved plan should be built |
 | `verify-plan` | re-reads the trees to say what a plan actually shipped, rewrites its Status, files it under `done/`, hands off the rest | "is this plan done?" |
 | `product-analysis` | market, competitors, demand, inventory from code, gaps, next moves | "how do we stack up / what next?" |
-| `merge-desk` | takes "ready to merge" reports from every session, adds those PRs to GitHub's merge queue in the order reported, sends each failure back to its reporter | several sessions land PRs in the same repos |
+| `merge-desk` | takes reports of finished, reviewed PRs from every session, waits for each one's checks, adds it to GitHub's merge queue when they are green, sends each failure back to its reporter | several sessions land PRs in the same repos |
 
 **Agents** (spawned by the skills as `ontherun:<name>`, never by hand)
 
@@ -70,7 +70,7 @@ skills call them by their full path under the plugin root; `bin/` is also on the
 | `ontherun-plan-fold-diff.sh <plan> [<base>]` | writes the diff of one plan edit for `fold-checker` |
 | `ontherun-plan-fold-sweep.sh [--all] [--rare N] <plan> <diff>` | lists where values an edit removed still stand in the plan |
 | `ontherun-merge-monitor.sh [--once] <repo> <branch>…` | polls a repo's PRs and prints the merge-queue head when it changes |
-| `ontherun-merge-desk.sh submit <pr> \| run \| watch \| status \| outbox \| told <seq>…` | keeps the merge desk's ledger of reported PRs and enqueues them in GitHub's merge queue in report order |
+| `ontherun-merge-desk.sh submit <pr> \| run \| watch \| status \| outbox \| told <seq>…` | keeps the merge desk's ledger of reported PRs and enqueues each in GitHub's merge queue once its checks are green |
 | `ontherun-lease.sh acquire <pool> <size> \| release <pool> \| list \| reap` | leases one slot of a fixed-size pool of a machine-wide resource, so sessions reuse a bounded set instead of each creating their own |
 | `ontherun-lib.sh` | shared functions the scripts source: workspace root, plans directory, default branch, GitHub slug, a bounded `gh` call |
 
@@ -192,8 +192,10 @@ flowchart TD
 ```
 
 Rounds alternate between the whole branch (`<base>...HEAD`) and just the latest fixes
-(`<sha>..HEAD`), and the loop only exits clean on a whole-branch verdict. It never merges;
-it ends by naming the exit (`approved at <sha>`) and relaying what the reviewer checked.
+(`<sha>..HEAD`), and the loop only exits clean on a whole-branch verdict. It never merges:
+with a merge desk running it reports the PR there, unless you said you want to look first,
+and otherwise leaves it for you. It ends by naming the exit (`approved at <sha>`) and
+relaying what the reviewer checked.
 
 Already have a branch? `/ontherun:review-loop`. Main moved under it? `/ontherun:sync-main`, which hands
 back to the review loop.
@@ -251,15 +253,24 @@ caps. You approve the plan; nothing launches before that.
 
 The conductor verifies what has already landed (a `verifier`, never its own memory),
 launches every node whose dependencies are merged — in parallel, each implementer in its own
-worktree under `<repo>/.claude/worktrees/` — and keeps one merge queue per repo. You see one
-line per repo and get one notification when its head is ready:
+worktree under `<repo>/.claude/worktrees/`. Each PR is reported to the merge desk the moment
+its implementer returns, without waiting for CI; the desk enqueues it when its checks are
+green, and a failure goes back through the conductor to the implementer that built it. You
+see one line per repo:
 
 ```
-acme-api — next: #114 `feat(users)!: account deletion` — ready to merge (1 queued behind)
+acme-api — #114 merged; #116, #117 with the desk
 ```
 
-You merge. The conductor records it, has the next head synced, and launches the wave that
-merge unblocked. Implementers that need a decision come back with questions it puts to you;
+A node marked `merge: owner` in the plan's `## State` block waits for you instead — the
+conductor marks the ones you ask to see first, and those it gives `implementer-high` — in a
+queue whose head is the one PR per repo you are asked to merge next:
+
+```
+acme-api — yours next: #118 `feat(users)!: account deletion` — ready to merge (1 queued behind)
+```
+
+Each merge is recorded and launches the wave it unblocked. Implementers that need a decision come back with questions it puts to you;
 plan sentences an implementer found wrong are corrected before the next wave. After the last
 merge it walks the plan's live `## Verification` scenarios, has a fresh verifier confirm, and
 with your go-ahead rewrites the Status and moves the plan to `plans/done/`.
@@ -279,18 +290,19 @@ enqueues:
 /ontherun:merge-desk
 ```
 
-Every other session reports a PR that is ready instead of merging it:
+Every other session reports a PR whose work is finished and reviewed instead of merging it:
 
 ```bash
 ontherun-merge-desk.sh submit https://github.com/acme/acme-api/pull/114 --from "<its session name>"
 ```
 
-`/ontherun:land` does that for a session: it waits for the PR's checks, fixes the ones that
-fail, reports the PR when they are green, and handles what the desk sends back.
+`/ontherun:land` does that for a session: it reports the PR without waiting for its checks,
+and fixes and reports again whatever the desk sends back. `review-loop` ends there by
+itself while a desk is running, and `conduct` reports its implementers' PRs.
 
-The desk enqueues in the order the reports arrived, one line per repo, and that is all it
-does to a PR. One that GitHub will not take, or takes out of the queue — a conflict, a
-failed check, a head that moved — goes back to the session that reported it with the
+The desk waits for each PR's checks and enqueues it when they are green, and that is all it
+does to a PR. One whose checks fail, that GitHub will not take, or that GitHub takes out of
+the queue — a conflict, a head that moved — goes back to the session that reported it with the
 reason; that session fixes it and reports it again. The ledger is a file, by default under
 `~/.local/state/ontherun/merge-desk/`, so a desk that is restarted owes what the last one
 owed.

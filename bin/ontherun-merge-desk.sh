@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016  # jq programs and GraphQL documents carry their own $names
-# The merge desk: take reports of pull requests that are ready to merge, and add them to
-# GitHub's merge queue in the order they were reported.
+# The merge desk: take reports of pull requests whose work is finished, wait for each one's
+# checks, and add it to GitHub's merge queue when they are green.
 #
 #   ontherun-merge-desk.sh submit <pr> [--from <name>] [--sha <oid>]
 #   ontherun-merge-desk.sh run [--once]
@@ -17,15 +17,16 @@
 # a repo without a merge queue gets no direct merge instead: GitHub refuses, and the PR is
 # sent back. Everything else it does is read a PR's state and write its own ledger.
 #
-# submit   Report one PR as ready, for the commit it stands at (or `--sha`, when the
-#          reporter vouches for a particular one). `--from` is the name the desk's session
-#          can message the reporter under. A PR the desk could only send straight back --
-#          closed, merged, a draft, conflicting, failing checks, a head that is not
-#          `--sha` -- is refused here, with the reason, and never enters the line. A PR
-#          already in the line at the same commit is not added twice; reported again at a
-#          new commit, it leaves its place and joins the back.
+# submit   Report one PR as finished, for the commit it stands at (or `--sha`, when the
+#          reporter vouches for a particular one); its checks may still be running.
+#          `--from` is the name the desk's session can message the reporter under. A PR
+#          the desk could only send straight back -- closed, merged, a draft, conflicting,
+#          failing checks, a head that is not `--sha` -- is refused here, with the reason,
+#          and never enters the line. A PR already in the line at the same commit is not
+#          added twice; reported again at a new commit, the old report is dropped.
 # run      Every poll, for each repo with PRs in the line: look at the PRs already in
-#          GitHub's queue, then walk the waiting ones in report order and enqueue each.
+#          GitHub's queue, then walk the waiting ones in report order and enqueue each
+#          that is ready.
 #          One line is printed per thing that happened, and appended to run.log beside
 #          the ledger. `--once` makes one pass, prints its lines and exits. One `run` loop
 #          per ledger: a second exits 1 while the first is alive.
@@ -37,14 +38,16 @@
 #          sent back with its reason. A row stays until `told` names it.
 # told     Mark those outcomes as delivered to whoever reported the PR.
 #
-# The line is strict per repo. A waiting PR is one of:
+# Each PR is judged on its own, so one whose checks are still running delays nothing but
+# itself, and PRs ready in the same pass are enqueued in report order. A waiting PR is one
+# of:
 #   enqueued   its head is the reported commit and GitHub says it can merge
-#   held       GitHub has not finished its checks or its mergeability; everything behind
-#              it in that repo waits, for at most $ONTHERUN_MERGE_DESK_HOLD_MINUTES
+#   waiting    GitHub has not finished its checks or its mergeability; the desk looks
+#              again every poll, for at most $ONTHERUN_MERGE_DESK_HOLD_MINUTES
 #   sent back  it cannot be enqueued, with one of the reasons below
 # and a PR in GitHub's queue stays the desk's until it merges or GitHub takes it out,
-# which sends it back too. A PR that is sent back has left the line: reported again, it
-# joins the back.
+# which sends it back too. A PR that is sent back has left the line, and comes back by
+# being reported again.
 #
 # A pass that gets no answer from GitHub about a PR -- the network, a hang, an expired
 # token, a rate limit, an error that is not about the PR -- learns nothing, so it records
@@ -53,7 +56,7 @@
 # been for as long as they last.
 #
 # Reasons a PR is sent back: closed, head_moved, draft, conflict, checks_failed,
-# review_required, timed_out (held too long), refused (GitHub would not enqueue it; its
+# review_required, timed_out (its checks never finished), refused (GitHub would not enqueue it; its
 # message is the detail), dequeued (someone took it out of the queue by hand), removed
 # (GitHub took it out for a reason this script has no word for; the detail carries it),
 # not_found (GitHub says there is no such pull request any more).
@@ -61,7 +64,7 @@
 # What `run` prints, one line each:
 #   enqueued <repo>#<n> position=<p> from="<name>"
 #   enqueued <repo>#<n> by=other from="<name>"     it was already in GitHub's queue
-#   holding <repo>#<n> for=checks|mergeability
+#   waiting <repo>#<n> for=checks|mergeability     said once per report
 #   merged <repo>#<n> tell="<name>"
 #   sent-back <repo>#<n> reason=<reason> tell="<name>"
 #   query-failed for 4 passes: <why>               said once, at the fourth in a row
@@ -71,7 +74,8 @@
 # Environment:
 #   ONTHERUN_MERGE_DESK_DIR            the ledger's directory; default
 #                                      ${XDG_STATE_HOME:-$HOME/.local/state}/ontherun/merge-desk
-#   ONTHERUN_MERGE_DESK_HOLD_MINUTES   how long a held PR keeps the line; default 30
+#   ONTHERUN_MERGE_DESK_HOLD_MINUTES   how long the desk waits for one PR's checks before
+#                                      sending it back as timed_out; default 120
 #
 # Exit status: 0 done; 1 a submit that was refused, a GitHub call that failed, a second
 # `run`, a ledger that does not parse, an unknown <seq>; 64 on usage.
@@ -85,7 +89,7 @@ set -u
 interval=${WF_MERGE_DESK_INTERVAL:-60}
 call_timeout=${WF_MERGE_DESK_TIMEOUT:-30}
 
-hold_minutes=${ONTHERUN_MERGE_DESK_HOLD_MINUTES:-30}
+hold_minutes=${ONTHERUN_MERGE_DESK_HOLD_MINUTES:-120}
 dir=${ONTHERUN_MERGE_DESK_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/ontherun/merge-desk}
 ledger=$dir/ledger.jsonl
 
@@ -174,7 +178,8 @@ entries() {
 #
 # GraphQL throughout: `gh pr merge` on a queue repo turns auto-merge on when the PR is not
 # yet mergeable, and auto-merge enters the queue whenever GitHub next finds the PR ready --
-# out of report order. `enqueuePullRequest` either adds the PR now or refuses.
+# at a commit nobody reported. `enqueuePullRequest` either adds the PR now, at the reported
+# commit, or refuses.
 
 PR_QUERY='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){id number url state isDraft mergeable mergeStateStatus reviewDecision isInMergeQueue headRefOid baseRefName mergeQueueEntry{position enqueuedAt} commits(last:1){nodes{commit{statusCheckRollup{state}}}} timelineItems(last:1,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{... on RemovedFromMergeQueueEvent{createdAt reason}}}}}}'
 
@@ -329,8 +334,10 @@ pass_repo() { # owner/name entries
   done 3< <(jq -r --arg r "$repo" '.[] | select(.repo == $r and .status == "enqueued")
       | [.seq, .pr, .from, .enqueued_at] | @tsv' <<<"$all")
 
-  # The waiting ones, in report order. `break` is the line holding: nothing behind a PR
-  # that is neither enqueued nor sent back is looked at in this pass.
+  # The waiting ones, in report order, each on its own: one still waiting on GitHub is
+  # passed over until the next pass. `break` is for a pass that has stopped learning --
+  # GitHub not answering, the ledger not taking a record -- and leaves the rest of the
+  # repo's line for the next one.
   while IFS=$'\t' read -r -u 3 seq number from sha held; do
     [ -n "$seq" ] || continue
     ref="$repo#$number"
@@ -351,13 +358,11 @@ pass_repo() { # owner/name entries
       hold)
         if [ "$held" = - ]; then
           record --argjson seq "$seq" '{at: $at, type: "held", seq: $seq}' || break
-          printf 'holding %s for=%s\n' "$ref" "$V_REASON"
+          printf 'waiting %s for=%s\n' "$ref" "$V_REASON"
         elif held_too_long "$held"; then
           sent_back "$seq" "$ref" "$from" timed_out \
             "$V_DETAIL after $hold_minutes minutes" || break
-          continue
-        fi
-        break ;;
+        fi ;;
       enqueue)
         gh_call api graphql -f query="$ENQUEUE" \
           -f id="$(jq -r .id <<<"$PR")" -f sha="$sha"; rc=$?
@@ -482,7 +487,7 @@ cmd_submit() {
     >> "$ledger"
   unlock ledger
 
-  printf 'reported %s#%s at %s as %s; %s waiting ahead of it in %s\n' \
+  printf 'reported %s#%s at %s as %s; %s more waiting in %s\n' \
     "$repo" "$number" "${sha:0:7}" "$seq" "$ahead" "$repo"
   runner_pid >/dev/null || printf 'no merge desk is running: nothing is enqueued until one is\n'
 }
@@ -517,7 +522,7 @@ cmd_status() {
   jq -r '.[]
     | select(.status == "waiting" or .status == "enqueued" or (.told | not))
     | [ (.seq | tostring), "\(.repo)#\(.pr)",
-        (if .status == "waiting" and .held_at then "held since \(.held_at)"
+        (if .status == "waiting" and .held_at then "waiting on GitHub since \(.held_at)"
          elif .status == "sent_back" then "sent back: \(.reason)"
          elif .status == "enqueued" then "in the merge queue"
          else .status end),

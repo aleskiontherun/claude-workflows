@@ -227,7 +227,7 @@ assert_out "every status renders its phrase; sha 0124767 is text, not a number" 
 - **setup-1** The org profile: acme/.github — not started, needs `manual-1`
 - **api-1** `feat(files)!: a second blob backend` — [#160](https://github.com/acme/acme-api/pull/160) merged 2026-09-08, squash [`0124767`](https://github.com/acme/acme-api/commit/0124767)
 - **web-1** `feat(files): the picker` — [#170](https://github.com/acme/acme-web/pull/170) merged, squash [`9908764`](https://github.com/acme/acme-web/commit/9908764)
-- **front-1** `docs: object storage` — [#12](https://github.com/acme/acme-site/pull/12) open, awaiting review
+- **front-1** `docs: object storage` — [#12](https://github.com/acme/acme-site/pull/12) open, awaiting merge
 - **spec-1** `docs: the README links the application repositories` — [#9](https://github.com/acme-org/spec/pull/9) draft, waiting on the human
 - **py-1** `feat: the package` — in progress on `claude/py-1-package`
 - **api-2** `chore: after the flip` — not started, needs `api-1`, `web-1`
@@ -235,7 +235,7 @@ assert_out "every status renders its phrase; sha 0124767 is text, not a number" 
 - **web-2** `docs: README badges` — blocked
 - **web-3** `chore: the devcontainer` — dropped
 - **api-4** `fix: something` — in progress
-- **sdk-1** `feat: a remote that is not GitHub` — #4 open, awaiting review
+- **sdk-1** `feat: a remote that is not GitHub` — #4 open, awaiting merge
 - **gone-1** `fix: a repo with no checkout` — #3 merged, squash `abc1234`' "$OUT"
 assert_has "a non-GitHub remote is named on stderr" \
   "no GitHub checkout for \`tools/sdk\` under $WS_REAL" "$ERR"
@@ -597,7 +597,7 @@ plan "$SOLO/plans/solo.md" "$TMP/solo.yaml"
 g -C "$SOLO/plans" add solo.md && g -C "$SOLO/plans" commit -q -m plan
 run "$SOLO/plans/solo.md"
 assert_out "single repo: \`repo: .\` links to the root's own origin" \
-  '- **app-1** `feat: in the only repo` — [#2](https://github.com/solo/app/pull/2) open, awaiting review' "$OUT"
+  '- **app-1** `feat: in the only repo` — [#2](https://github.com/solo/app/pull/2) open, awaiting merge' "$OUT"
 assert_eq "  with nothing on stderr" "" "$ERR"
 
 # ------------------------------------------------------------------------ result
