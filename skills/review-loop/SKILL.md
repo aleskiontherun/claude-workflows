@@ -193,9 +193,10 @@ round on a question a shell command answers for free.
    - **PR exists**: `gh pr edit --body …` so the body describes the change as it now
      stands, as if just written. No review-fixes section, no comment on the PR.
 
-   **Then hand the PR to the merge desk**: follow
-   `${CLAUDE_PLUGIN_ROOT}/skills/land/SKILL.md` from its step 2 — report the PR now,
-   whether or not its checks have finished, and fix what the desk sends back. Two cases
+   **Then hand the PR to the merge desk**: report it now, whether or not its checks have
+   finished, as "Reporting a PR" in `${CLAUDE_PLUGIN_ROOT}/skills/merge-desk/SKILL.md`
+   says, with `--sha` set to the head you just pushed; then answer what the desk sends
+   back as `${CLAUDE_PLUGIN_ROOT}/reference/sent-back.md` says. Two cases
    leave the PR for the human to merge instead, and step 6 says which applied:
    - you are a conductor's implementer — the conductor reports your PR
      (`${CLAUDE_PLUGIN_ROOT}/reference/implementer-protocol.md`);

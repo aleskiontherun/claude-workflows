@@ -25,7 +25,6 @@ Everything ships as one plugin, `ontherun`, so skills are `/ontherun:implement` 
 | `implement` | implements a task, then hands off to `review-loop` | "implement / add / fix X" — any PR-sized change |
 | `review-loop` | reviewer → validators → fix → repeat until clean, then opens or updates the PR and hands it to the merge desk, or stops where none is running | a branch already has the changes |
 | `sync-main` | merges the default branch into an in-flight branch — absorbing the squash of a PR the branch was built on — resolves conflicts, re-checks the branch against what arrived | a PR is stale or conflicting |
-| `land` | reports an open, reviewed PR to the merge desk without waiting for CI, then fixes on the branch whatever the desk sends back — failed checks, a conflict — and reports it again | a PR should get from "opened" to merged without you watching CI |
 | `plan` | researches a feature, asks you the product calls, writes a plan with a DAG of PR-sized nodes, runs the plan-review loop, presents it | a feature too big for one PR |
 | `conduct` | verifies what landed, launches implementer subagents wave by wave, reports each PR to the merge desk or queues it for you to merge, closes the plan out | an approved plan should be built |
 | `verify-plan` | re-reads the trees to say what a plan actually shipped, rewrites its Status, files it under `done/`, hands off the rest | "is this plan done?" |
@@ -55,6 +54,7 @@ share; nothing restates them.
 | `plan-format.md` | the plan document: Status block and ledger, `## State` DAG, node kinds, statuses, optional sections |
 | `plan-review-loop.md` | the loop `plan` and `conduct` run over plans |
 | `implementer-protocol.md` | everything an implementer agent does |
+| `sent-back.md` | what a PR's builder does with what the merge desk sends back: reading the failure, fixing the cause, flakes, re-review |
 | `verification-walk.md` | how `conduct` walks a plan's `## Verification` scenarios after its last PR merges |
 
 **Scripts** in `bin/` — deterministic checks the skills run instead of spending a reviewer
@@ -299,9 +299,9 @@ Every other session reports a PR whose work is finished and reviewed instead of 
 ontherun-merge-desk.sh submit https://github.com/acme/acme-api/pull/114 --from "<its session name>"
 ```
 
-`/ontherun:land` does that for a session: it reports the PR without waiting for its checks,
-and fixes and reports again whatever the desk sends back. `review-loop` ends there by
-itself while a desk is running, and `conduct` reports its implementers' PRs.
+`review-loop` ends there by itself while a desk is running — it reports the PR without
+waiting for its checks, then fixes and reports again whatever the desk sends back — and
+`conduct` reports its implementers' PRs.
 
 The desk waits for each PR's checks and enqueues it when they are green, and that is all it
 does to a PR. One whose checks fail, that GitHub will not take, or that GitHub takes out of
