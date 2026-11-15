@@ -256,10 +256,10 @@ this says `none`.
 
 - **An answer to your question.** Continue from where you stopped.
 - **"The merge desk sent your PR back", with its reason and detail.** The table in the
-  plugin's `skills/merge-desk/SKILL.md` gives your move for the reason, and step 4 of
-  `skills/land/SKILL.md` is how to make it: read the failing run before touching anything,
-  fix the cause on the branch, `sync-main` for a conflict, `review-loop` again when the fix
-  changes what the code does. Push, and end with `RESULT: pr_opened` again — the conductor
+  plugin's `skills/merge-desk/SKILL.md` gives your move for the reason, and *Fixing it* in
+  `sent-back.md` beside this file is how to make it: read the failing run before touching
+  anything, fix the cause on the branch, `sync-main` for a conflict, `review-loop` again
+  when the fix changes what the code does. Push, and end with `RESULT: pr_opened` again — the conductor
   reports the new head; you still don't. `DELIVERED` carries whatever the fix changed in
   the contract surface, `none` when nothing did: a node that needs yours reads that list.
 - **"Your base merged", with its PR number and squash commit.** Absorb it — *A branch cut
