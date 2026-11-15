@@ -15,8 +15,10 @@ counts as sent back, with the reason it printed.
 - **Merged**: tell whoever started you. Done.
 - **Sent back for something the branch can fix** — `checks_failed`, `conflict`,
   `head_moved`, `draft`, `timed_out`: fix it as below, then report again.
-- **`review_required`, `refused`, `dequeued`**: a person or a setting, not the branch. Tell
-  whoever started you, and stop.
+- **`review_required`, `refused`, `dequeued`, `removed`**: a person, a setting or GitHub's
+  own reason, not the branch. Tell whoever started you, with the detail, and stop.
+- **`closed`, `not_found`**: the PR is gone; nothing to fix. Tell whoever started you.
+- **A reason not named here**: the reason table in the merge-desk skill gives the move.
 - **Sent back a third time**: stop and say so; only a human ends that loop.
 
 ## Fixing it
